@@ -3,25 +3,36 @@ import readline from 'node:readline';
 import { classifyOutcome, readRateLimitEvent } from './limits.js';
 import { memoryPrompt } from './memory.js';
 
-export function buildArgs({ settings, sessionId }) {
+export function buildArgs({ settings, sessionId, overrides = {} }) {
+  const opt = { ...settings, ...Object.fromEntries(Object.entries(overrides).filter(([, v]) => v != null && v !== '')) };
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
   if (sessionId) args.push('--resume', sessionId);
-  if (settings.model) args.push('--model', settings.model);
-  if (settings.permissionMode === 'bypassPermissions') args.push('--dangerously-skip-permissions');
-  else if (settings.permissionMode) args.push('--permission-mode', settings.permissionMode);
+  if (opt.model && opt.model !== 'default') args.push('--model', opt.model);
+  if (opt.effort) args.push('--effort', opt.effort);
+  if (opt.permissionMode === 'bypassPermissions') args.push('--dangerously-skip-permissions');
+  else if (opt.permissionMode && opt.permissionMode !== 'default') args.push('--permission-mode', opt.permissionMode);
   args.push('--append-system-prompt', memoryPrompt());
-  args.push(...(settings.extraArgs || []));
+  args.push(...(opt.extraArgs || []));
   return args;
+}
+
+function resultText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map((b) => (b.type === 'text' ? b.text : b.type === 'image' ? '[image]' : '')).join('\n');
 }
 
 /**
  * Run a single Claude Code turn as `account` and stream events.
- * Events passed to onEvent: {type:'text', text} | {type:'tool', name, input} | {type:'tool_result', isError}
- *   | {type:'session', sessionId} | {type:'rate_limit', info} | {type:'raw', msg}
+ * Events passed to onEvent:
+ *   {type:'text', text}                                  streamed assistant text (top level only)
+ *   {type:'tool', id, name, input, parentId, subagent}   a tool call; parentId = the Task call a subagent runs under
+ *   {type:'tool_result', toolUseId, isError, content, parentId}
+ *   {type:'session', sessionId} | {type:'rate_limit', info} | {type:'raw', msg}
  */
-export function runTurn({ pool, account, prompt, sessionId, cwd = process.cwd(), onEvent = () => {}, signal }) {
+export function runTurn({ pool, account, prompt, sessionId, overrides, cwd = process.cwd(), onEvent = () => {}, signal }) {
   const settings = pool.settings;
-  const args = buildArgs({ settings, sessionId });
+  const args = buildArgs({ settings, sessionId, overrides });
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -73,12 +84,24 @@ export function runTurn({ pool, account, prompt, sessionId, cwd = process.cwd(),
         }
         case 'assistant':
           for (const block of msg.message?.content || []) {
-            if (block.type === 'tool_use') onEvent({ type: 'tool', name: block.name, input: block.input, subagent: Boolean(msg.parent_tool_use_id) });
+            if (block.type === 'tool_use') {
+              onEvent({
+                type: 'tool', id: block.id, name: block.name, input: block.input,
+                parentId: msg.parent_tool_use_id || null, subagent: Boolean(msg.parent_tool_use_id),
+              });
+            }
           }
           break;
         case 'user':
           for (const block of msg.message?.content || []) {
-            if (block.type === 'tool_result' && block.is_error) onEvent({ type: 'tool_result', isError: true });
+            if (block.type === 'tool_result') {
+              const content = resultText(block.content);
+              onEvent({
+                type: 'tool_result', toolUseId: block.tool_use_id, isError: Boolean(block.is_error),
+                content: content.length > 8000 ? `${content.slice(0, 8000)}\n… (${content.length - 8000} more characters)` : content,
+                parentId: msg.parent_tool_use_id || null,
+              });
+            }
           }
           break;
         case 'rate_limit_event':

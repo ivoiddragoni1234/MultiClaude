@@ -8,7 +8,7 @@ A personal Claude gateway, inspired by OpenClaw. You sign in as many accounts as
 - **Waits instead of failing.** When all accounts are limited, it counts down to the earliest reset and continues. Set `onAllLimited` to `stop` if you would rather it stopped.
 - **Switches before hitting the wall.** It reads Claude Code's rate-limit events and retires an account once a usage window is 97% full (`switchAtUtilization`).
 - **Persistent memory.** A shared `CLAUDE.md` loads into every session on every account. Claude is told it can append to this file, and you can manage it with `/remember`, `/memory` and `/forget` or edit it in the dashboard.
-- **Web dashboard.** A local page for chatting, adding and removing accounts, watching usage bars and countdowns, changing strategy and editing memory.
+- **Claude Code–style web app.** `multiclaude web` opens a local site laid out like Claude Code: a sessions sidebar, streaming chat, tool cards with diffs and output, subagents shown with their own nested tool calls, todo lists, and model, effort and permission pickers. Accounts switch silently in the middle of a turn, with no restart and no pop-up. Past sessions reload from Claude Code's own transcripts.
 - Zero dependencies. You only need Node 18+ and Claude Code.
 
 ## Install
@@ -45,10 +45,20 @@ multiclaude                             # chat in the terminal (Ctrl+C stops a t
 multiclaude run "fix the failing tests" # one-shot, pipe-friendly
 multiclaude tui                         # full Claude Code UI, resumes on the next account when one runs out
 multiclaude tui --auto -- --model opus  # continue without asking; pass extra args to claude
-multiclaude web                         # dashboard at http://127.0.0.1:7878 (open the printed link)
+multiclaude web                         # Claude Code–style web app at http://127.0.0.1:7878 (open the printed link)
 ```
 
 Chat commands: `/accounts`, `/use <name>`, `/strategy <s>`, `/reset <name>`, `/new`, `/remember <text>`, `/memory`, `/forget`, `/status`, `/tui`, `/quit`.
+
+## The web app
+
+Run `multiclaude web` and open the link it prints. The link includes a private access token.
+
+- **New session** picks a working folder. Each session is a real Claude Code conversation, and several can run at once.
+- Account switching is silent. If an account runs out mid-task, the next one resumes the same conversation and finishes the work. The chat just keeps streaming. Turn on *Rotation → Show account switches in the chat* if you want to see it happen. The only time you'll see a message is when every account is used up; then a bar counts down to the next reset and it continues on its own.
+- **Accounts** (sidebar, or click your name at the bottom) lets you add Pro/Max tokens or API keys, see usage per window, pause accounts or clear a limit.
+- **Memory** edits the shared `CLAUDE.md` that every session loads.
+- The picker at the bottom left is the permission mode. The web app can't show approval prompts, so pick **Auto** or **Bypass permissions** if you want Claude to run shell commands freely. **Accept edits** allows file edits only.
 
 ## Settings
 

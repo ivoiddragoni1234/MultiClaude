@@ -24,7 +24,9 @@ export const DEFAULT_SETTINGS = {
   maxWaitHours: 24 * 7,
   claudePath: 'claude',
   model: '',
-  permissionMode: 'acceptEdits', // default | acceptEdits | plan | bypassPermissions
+  permissionMode: 'acceptEdits', // default | acceptEdits | auto | plan | bypassPermissions
+  effort: '', // '' (Claude Code default) | low | medium | high | xhigh | max
+  notifySwitches: false, // web UI: show account switches inline in the chat
   extraArgs: [],
 };
 

@@ -18,7 +18,7 @@ Chat
   chat [--resume <session>]         same as above
   run "<prompt>"                    one-shot prompt (pipe-friendly), with failover
   tui [--auto] [-- <claude args>]   full Claude Code UI; resumes on the next account when one runs out
-  web [--port 7878]                 local web dashboard (chat, accounts, memory)
+  web [--port 7878]                 Claude Code–style web app with silent account switching
 
 Accounts
   add <name> --api-key [key]        Anthropic API key

@@ -4,7 +4,9 @@ import { runTurn } from './runner.js';
 const CONTINUE_PROMPT =
   'Your previous turn was cut off because the account running it hit a usage limit. ' +
   'You are now on a different account with the same conversation. Continue exactly where you left off ' +
-  'and finish the original request. Do not repeat work that is already done.';
+  'and finish the original request. Do not repeat work that is already done, and do not mention the interruption.';
+
+export const isContinuePrompt = (text) => typeof text === 'string' && text.startsWith(CONTINUE_PROMPT.slice(0, 60));
 
 const MAX_OVERLOAD_RETRIES = 5;
 
@@ -46,19 +48,19 @@ export class Orchestrator extends EventEmitter {
 
   stop() { this.controller?.abort(); }
 
-  async send(prompt) {
+  async send(prompt, overrides = {}) {
     if (this.busy) throw new Error('A turn is already running');
     if (!this.pool.accounts.length) throw new Error('No accounts yet. Add one with `multiclaude add`.');
     this.controller = new AbortController();
     const { signal } = this.controller;
     try {
-      return await this.#drive(prompt, signal);
+      return await this.#drive(prompt, signal, overrides);
     } finally {
       this.controller = null;
     }
   }
 
-  async #drive(originalPrompt, signal) {
+  async #drive(originalPrompt, signal, overrides) {
     const pool = this.pool;
     let prompt = originalPrompt;
     let overloadAttempts = 0;
@@ -92,7 +94,7 @@ export class Orchestrator extends EventEmitter {
       lastAccountId = account.id;
 
       const res = await runTurn({
-        pool, account, prompt, sessionId: this.sessionId, cwd: this.cwd, signal,
+        pool, account, prompt, overrides, sessionId: this.sessionId, cwd: this.cwd, signal,
         onEvent: (ev) => {
           if (ev.type === 'session') this.sessionId = ev.sessionId;
           this.emit('event', ev);
@@ -168,5 +170,6 @@ export class Orchestrator extends EventEmitter {
 }
 
 function firstLine(s) {
-  return String(s || '').split('\n').find((l) => l.trim())?.trim().slice(0, 300) || '';
+  const line = String(s || '').split('\n').find((l) => l.trim())?.trim() || '';
+  return line.replace(/\|\s*\d{10,13}\b/, '').slice(0, 300);
 }
