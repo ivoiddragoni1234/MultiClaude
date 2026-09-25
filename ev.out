@@ -1,0 +1,12 @@
+data: {"type":"user","text":"hi web"}
+
+data: {"type":"account","account":{"id":"second","name":"second"}}
+
+data: {"type":"session","sessionId":"sess-1"}
+
+data: {"type":"text","text":"hello from key-ok"}
+
+data: {"type":"tool","name":"Bash","input":{"command":"ls"},"subagent":false}
+
+data: {"type":"done","aborted":false,"account":{"id":"second","name":"second"}}
+
