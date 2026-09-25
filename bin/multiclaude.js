@@ -8,6 +8,8 @@ import { runTui } from '../src/tui.js';
 import { startServer } from '../src/server.js';
 import { readMemory, remember, forgetAll } from '../src/memory.js';
 import { paths } from '../src/paths.js';
+import { claudeSpawn } from '../src/claude-path.js';
+import { runApp } from '../src/app.js';
 
 const HELP = `MultiClaude — run Claude Code across many accounts with automatic failover.
 
@@ -18,6 +20,7 @@ Chat
   chat [--resume <session>]         same as above
   run "<prompt>"                    one-shot prompt (pipe-friendly), with failover
   tui [--auto] [-- <claude args>]   full Claude Code UI; resumes on the next account when one runs out
+  app                               desktop app: opens the web app in its own window (what MultiClaude.exe runs)
   web [--port 7878]                 Claude Code–style web app with silent account switching
 
 Accounts
@@ -116,6 +119,11 @@ async function main() {
       await runTui(pool, { auto: Boolean(flag(args, '--auto')), sessionId: flag(args, '--resume') || null, extraArgs: extra });
       break;
     }
+    case 'app': {
+      console.log(`Opening MultiClaude… (log: ${paths.logs}/app.log)`);
+      await runApp();
+      break;
+    }
     case 'web': {
       const port = Number(flag(args, '--port') || 7878);
       const host = flag(args, '--host') || '127.0.0.1';
@@ -143,7 +151,8 @@ async function main() {
       if (!acct) throw new Error('Usage: multiclaude login <name>  (add it first with --login)');
       const extra = args.includes('--console') ? ['--console'] : [];
       const code = await new Promise((resolve, reject) => {
-        const child = spawn(pool.settings.claudePath, ['auth', 'login', ...extra], { stdio: 'inherit', env: pool.envFor(acct) });
+        const sp = claudeSpawn(pool.settings.claudePath, ['auth', 'login', ...extra]);
+        const child = spawn(sp.command, sp.args, { ...sp.options, windowsHide: false, stdio: 'inherit', env: pool.envFor(acct) });
         child.on('error', reject);
         child.on('close', resolve);
       });

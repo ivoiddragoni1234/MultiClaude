@@ -8,6 +8,7 @@ import { paths } from './paths.js';
 import { lineShowsLimit, parseResetTime } from './limits.js';
 import { memoryPrompt } from './memory.js';
 import { waitUntil } from './orchestrator.js';
+import { claudeSpawn } from './claude-path.js';
 
 function newestTranscript(since) {
   const root = path.join(paths.shared, 'projects');
@@ -53,7 +54,8 @@ function launch(pool, account, sessionId, extraArgs) {
   else if (s.permissionMode && s.permissionMode !== 'default') args.push('--permission-mode', s.permissionMode);
   args.push('--append-system-prompt', memoryPrompt(), ...extraArgs);
   return new Promise((resolve, reject) => {
-    const child = spawn(s.claudePath || 'claude', args, { stdio: 'inherit', env: pool.envFor(account) });
+    const sp = claudeSpawn(s.claudePath, args);
+    const child = spawn(sp.command, sp.args, { ...sp.options, windowsHide: false, stdio: 'inherit', env: pool.envFor(account) });
     child.on('error', reject);
     child.on('close', (code) => resolve(code));
   });

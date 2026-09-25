@@ -11,7 +11,18 @@ A personal Claude gateway, inspired by OpenClaw. You sign in as many accounts as
 - **Claude Code–style web app.** `multiclaude web` opens a local site laid out like Claude Code: a sessions sidebar, streaming chat, tool cards with diffs and output, subagents shown with their own nested tool calls, todo lists, and model, effort and permission pickers. Accounts switch silently in the middle of a turn, with no restart and no pop-up. Past sessions reload from Claude Code's own transcripts.
 - Zero dependencies. You only need Node 18+ and Claude Code.
 
-## Install
+## Windows app (no terminal needed)
+
+1. Install **Claude Code** once: open PowerShell and run `irm https://claude.ai/install.ps1 | iex`. On Windows, Claude Code uses Git for Windows for its Bash tool; if it's missing, Claude Code's installer or first run tells you.
+2. Double-click **MultiClaude.exe**. Get it from this repo's *Releases* page, from the *Windows app* workflow's artifacts, or build it yourself with `npm run build:exe`. It opens in its own window with no console.
+3. Open **Accounts**, then **Add account** and **Get a token…**. Sign in with each Pro/Max account and paste its token.
+4. Click **New session**, pick the folder you want Claude to work in, and start chatting.
+
+The app runs a small local server in the background. It is only reachable from your own PC and is protected by a private token. Close every MultiClaude window and it quits by itself once Claude has finished any running task. Logs are in `%USERPROFILE%\.multiclaude\logs\app.log`.
+
+Windows may show a SmartScreen warning the first time, because the exe isn't code-signed. Click *More info → Run anyway*.
+
+## Install (command line, any OS)
 
 ```bash
 npm i -g @anthropic-ai/claude-code      # if you don't have Claude Code yet

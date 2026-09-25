@@ -59,19 +59,42 @@ export function ensureSharedLayout() {
   }
 }
 
+function sameFile(a, b) {
+  try {
+    const x = fs.statSync(a);
+    const y = fs.statSync(b);
+    return x.ino === y.ino && x.dev === y.dev;
+  } catch {
+    return false;
+  }
+}
+
 function linkShared(accountDir) {
+  const isWin = process.platform === 'win32';
   for (const name of [...SHARED_DIRS, ...SHARED_FILES]) {
     const target = path.join(paths.shared, name);
     const link = path.join(accountDir, name);
+    const isDir = SHARED_DIRS.includes(name);
     let st = null;
     try { st = fs.lstatSync(link); } catch { /* missing */ }
-    if (st?.isSymbolicLink()) continue;
+    if (st?.isSymbolicLink()) continue; // symlink, or a junction on Windows
+    if (st && !isDir && sameFile(link, target)) continue; // hard link fallback, still intact
     if (st) {
       // A real file/dir already exists (e.g. created by claude before linking): merge it into shared.
-      if (st.isDirectory()) fs.cpSync(link, target, { recursive: true, force: false, errorOnExist: false });
+      if (st.isDirectory() && isDir) fs.cpSync(link, target, { recursive: true, force: false, errorOnExist: false });
       fs.rmSync(link, { recursive: true, force: true });
     }
-    fs.symlinkSync(target, link, st?.isDirectory() || SHARED_DIRS.includes(name) ? 'dir' : 'file');
+    if (isDir) {
+      // Junctions need no admin rights or Developer Mode on Windows.
+      fs.symlinkSync(target, link, isWin ? 'junction' : 'dir');
+    } else {
+      try {
+        fs.symlinkSync(target, link, 'file');
+      } catch (err) {
+        if (err.code !== 'EPERM' && err.code !== 'EACCES') throw err;
+        fs.linkSync(target, link); // Windows without symlink rights: hard link, re-made if it breaks
+      }
+    }
   }
 }
 

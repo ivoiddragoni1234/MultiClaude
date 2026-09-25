@@ -9,10 +9,17 @@
   "scripts": {
     "start": "node bin/multiclaude.js",
     "web": "node bin/multiclaude.js web",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:exe": "node scripts/build-exe.mjs",
+    "app": "node bin/multiclaude.js app"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "resedit": "^2.0.3"
+  }
 }

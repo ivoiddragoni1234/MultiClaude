@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { classifyOutcome, readRateLimitEvent } from './limits.js';
 import { memoryPrompt } from './memory.js';
+import { claudeSpawn, INSTALL_HINT } from './claude-path.js';
 
 export function buildArgs({ settings, sessionId, overrides = {} }) {
   const opt = { ...settings, ...Object.fromEntries(Object.entries(overrides).filter(([, v]) => v != null && v !== '')) };
@@ -36,7 +37,9 @@ export function runTurn({ pool, account, prompt, sessionId, overrides, cwd = pro
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(settings.claudePath || 'claude', args, {
+      const sp = claudeSpawn(settings.claudePath, args);
+      child = spawn(sp.command, sp.args, {
+        ...sp.options,
         cwd,
         env: pool.envFor(account),
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -58,7 +61,7 @@ export function runTurn({ pool, account, prompt, sessionId, overrides, cwd = pro
     child.on('error', (err) => {
       signal?.removeEventListener('abort', onAbort);
       reject(err.code === 'ENOENT'
-        ? new Error(`Could not find the Claude Code CLI ("${settings.claudePath}"). Install it with: npm i -g @anthropic-ai/claude-code`)
+        ? new Error(`Could not find the Claude Code CLI. ${INSTALL_HINT}`)
         : err);
     });
     child.stderr.on('data', (d) => { stderr += d; if (stderr.length > 20000) stderr = stderr.slice(-20000); });

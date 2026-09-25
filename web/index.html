@@ -170,6 +170,8 @@
   .dirs { border: 1px solid var(--line); border-radius: 8px; max-height: 280px; overflow-y: auto; margin-top: 8px; }
   .dirs div { padding: 5px 12px; font-size: 14px; cursor: pointer; display: flex; gap: 8px; }
   .dirs div:hover { background: var(--panel); }
+  .banner { max-width: 760px; margin: 12px auto 0; padding: 10px 14px; border: 1px solid var(--warn); border-radius: 10px; color: var(--ink); background: var(--panel); font-size: 14px; }
+  .banner code { background: var(--code); padding: 1px 6px; border-radius: 4px; user-select: all; }
   .warn-box { font-size: 13px; color: var(--ink2); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
 
   @media (max-width: 760px) {
@@ -212,6 +214,7 @@
       <div class="spacer"></div>
       <button class="icon-btn" id="delBtn" title="Delete session" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
     </div>
+    <div class="banner" id="banner" hidden></div>
     <div id="scroll"><div class="col" id="chat"></div></div>
     <div class="composer-wrap">
       <div class="composer-inner">
@@ -270,7 +273,8 @@
             <div><label class="f">Name</label><input class="in" name="acctName" required placeholder="pro-2"></div>
             <div><label class="f">Type</label><select class="in" name="acctType" id="acctType"></select></div>
           </div>
-          <div id="secretRow"><label class="f" id="secretLabel">Token</label><input class="in" name="acctSecret" type="password" autocomplete="off"></div>
+          <div id="secretRow"><label class="f" id="secretLabel">Token</label>
+            <div style="display:flex;gap:8px"><input class="in" name="acctSecret" type="password" autocomplete="off"><button class="btn" type="button" id="getToken" style="white-space:nowrap">Get a token…</button></div></div>
           <div class="meta" id="typeHelp" style="margin-top:6px"></div>
           <div class="acts"><button class="btn primary">Add account</button></div>
         </form>
@@ -398,6 +402,17 @@ async function refresh() {
   renderSidebar();
   renderSettings();
   renderTop();
+  const b = $('#banner');
+  if (!state.claude.found) {
+    const [label, cmd] = state.claude.installHint.split(/:\s+/);
+    b.innerHTML = `<b>Claude Code isn't installed on this computer.</b> MultiClaude runs it for you. ${esc(label)}: <code>${esc(cmd.trim())}</code>. Then click <a href="#" id="recheck" style="color:var(--accent)">check again</a>.`;
+    b.hidden = false;
+    $('#recheck').onclick = (e) => { e.preventDefault(); refresh(); };
+  } else if (!state.accounts.length) {
+    b.innerHTML = 'Add your Claude accounts to get started: <a href="#" id="openAccts" style="color:var(--accent)">open Accounts</a>.';
+    b.hidden = false;
+    $('#openAccts').onclick = (e) => { e.preventDefault(); openSettings('accounts'); };
+  } else b.hidden = true;
 }
 
 /* ---------- sidebar ---------- */
@@ -619,10 +634,10 @@ async function browse(p) {
   try {
     const r = await api('GET', '/api/dirs?path=' + encodeURIComponent(p || ''));
     $('#dirPath').value = r.path; $('#dirUp').dataset.p = r.parent;
-    $('#dirList').innerHTML = r.dirs.map((d) => `<div data-d="${esc(d)}">📁 ${esc(d)}</div>`).join('') || '<div class="meta">No subfolders</div>';
+    $('#dirList').innerHTML = r.dirs.map((d) => `<div data-d="${esc(d.path)}">📁 ${esc(d.name)}</div>`).join('') || '<div class="meta">No subfolders</div>';
   } catch (err) { $('#dirList').innerHTML = `<div class="meta">${esc(err.message)}</div>`; }
 }
-$('#dirList').addEventListener('click', (e) => { const d = e.target.closest('[data-d]'); if (d) browse($('#dirPath').value.replace(/\/$/, '') + '/' + d.dataset.d); });
+$('#dirList').addEventListener('click', (e) => { const d = e.target.closest('[data-d]'); if (d) browse(d.dataset.d); });
 $('#dirUp').addEventListener('click', () => browse($('#dirUp').dataset.p));
 $('#dirPath').addEventListener('keydown', (e) => { if (e.key === 'Enter') browse($('#dirPath').value); });
 $('#newBtn').addEventListener('click', () => {
@@ -649,9 +664,9 @@ $('#foot').addEventListener('click', () => openSettings('accounts'));
 $('#memBtn').addEventListener('click', () => openSettings('memory'));
 
 const TYPE_HELP = {
-  token: 'For Claude Pro/Max. Sign in to that account on claude.ai, run <code>claude setup-token</code> in a terminal, and paste the token here.',
+  token: 'For Claude Pro/Max. Click <b>Get a token…</b>: a window opens and your browser asks you to sign in. Sign in with the account you are adding, then copy the token it prints and paste it here.',
   api: 'An Anthropic Console API key (sk-ant-…). Billed per use.',
-  login: 'For Claude Pro/Max. After adding, run <code>multiclaude login &lt;name&gt;</code> in a terminal to sign in.',
+  login: 'For Claude Pro/Max. After adding, click <b>Sign in…</b> on the account to log it in.',
 };
 function renderSettings() {
   $('#acctList').innerHTML = state.accounts.map((a) => `
@@ -667,7 +682,7 @@ function renderSettings() {
         <button class="btn" data-a="${a.enabled ? 'disable' : 'enable'}" data-id="${esc(a.id)}">${a.enabled ? 'Pause' : 'Enable'}</button>
         <button class="btn" data-a="remove" data-id="${esc(a.id)}">Remove</button>
       </div>
-      ${a.type === 'login' ? `<div class="meta" style="margin-top:6px">Sign in from a terminal: <code>multiclaude login ${esc(a.id)}</code></div>` : ''}
+      ${a.type === 'login' ? `<div class="acts"><button class="btn" data-a="login" data-id="${esc(a.id)}">Sign in…</button><span class="meta">Opens a window to sign this account in to Claude.</span></div>` : ''}
     </div>`).join('') || '<div class="meta" style="margin-bottom:10px">No accounts yet.</div>';
   if (!$('#acctType').options.length) {
     $('#acctType').innerHTML = [['token', 'Subscription token (Pro/Max)'], ['login', 'Subscription sign-in (Pro/Max)'], ['api', 'API key']].map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
@@ -686,13 +701,16 @@ function syncType() {
   const t = $('#acctType').value;
   $('#secretRow').hidden = t === 'login';
   $('#secretLabel').textContent = t === 'api' ? 'API key' : 'Token';
+  $('#getToken').hidden = t !== 'token';
   $('#typeHelp').innerHTML = TYPE_HELP[t];
 }
 $('#acctType').addEventListener('change', syncType);
+$('#getToken').addEventListener('click', () => api('POST', '/api/setup-token').catch((err) => alert(err.message)));
 $('#acctList').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-a]'); if (!b) return;
   try {
     if (b.dataset.a === 'remove') { if (!confirm('Remove this account and its saved sign-in?')) return; await api('DELETE', '/api/accounts/' + b.dataset.id); }
+    else if (b.dataset.a === 'login') { await api('POST', `/api/accounts/${b.dataset.id}/login`); alert('A sign-in window has opened. Finish signing in there, then close it.'); }
     else await api('POST', `/api/accounts/${b.dataset.id}/${b.dataset.a}`);
     refresh();
   } catch (err) { alert(err.message); }
@@ -702,7 +720,6 @@ $('#addForm').addEventListener('submit', async (e) => {
   try {
     const r = await api('POST', '/api/accounts', { name: f.elements.acctName.value, type: f.elements.acctType.value, secret: f.elements.acctSecret.value });
     f.elements.acctName.value = ''; f.elements.acctSecret.value = '';
-    if (r.note) alert(r.note);
     refresh();
   } catch (err) { alert(err.message); }
 });

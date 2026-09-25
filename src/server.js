@@ -6,13 +6,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import { SessionManager } from './sessions.js';
 import { STRATEGIES, ACCOUNT_TYPES } from './accounts.js';
 import { readMemory, writeMemory } from './memory.js';
 import { paths } from './paths.js';
-
-const INDEX = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'index.html');
+import { indexHtml } from './web-asset.js';
+import { resolveClaude, INSTALL_HINT } from './claude-path.js';
+import { openTerminal } from './desktop.js';
 const EDITABLE_SETTINGS = [
   'strategy', 'onAllLimited', 'switchAtUtilization', 'defaultCooldownMinutes',
   'model', 'effort', 'permissionMode', 'notifySwitches',
@@ -31,11 +31,11 @@ async function body(req) {
 function listDirs(dir) {
   const target = path.resolve(dir || os.homedir());
   const entries = fs.readdirSync(target, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => e.name)
-    .sort((a, b) => a.localeCompare(b))
+    .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && !e.name.startsWith('.') && !e.name.startsWith('$'))
+    .map((e) => ({ name: e.name, path: path.join(target, e.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 300);
-  return { path: target, parent: path.dirname(target), dirs: entries };
+  return { path: target, parent: path.dirname(target), dirs: entries, sep: path.sep };
 }
 
 export function startServer(pool, { port = 7878, host = '127.0.0.1', token = crypto.randomBytes(18).toString('base64url'), cwd } = {}) {
@@ -46,7 +46,10 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
 
   const snapshot = () => {
     pool.load();
+    const claude = resolveClaude(pool.settings.claudePath);
     return {
+      claude: { found: claude.found, path: claude.path, installHint: INSTALL_HINT },
+      platform: process.platform,
       accounts: pool.describe(),
       settings: Object.fromEntries(EDITABLE_SETTINGS.map((k) => [k, pool.settings[k]])),
       strategies: STRATEGIES,
@@ -70,7 +73,7 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
           'cache-control': 'no-store',
           'content-security-policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
         });
-        res.end(fs.readFileSync(INDEX));
+        res.end(indexHtml());
         return;
       }
       if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
@@ -115,13 +118,23 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
         if (m === 'DELETE' && !action) { sessions.remove(id); return send(200, { ok: true }); }
       }
 
+      // Interactive Claude Code sign-in flows, opened in a visible terminal window
+      if (m === 'POST' && pathname === '/api/setup-token') {
+        // A throwaway profile, so setup-token signs in fresh instead of reusing another account
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'multiclaude-token-'));
+        const env = { ...process.env, CLAUDE_CONFIG_DIR: dir };
+        for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']) delete env[k];
+        openTerminal(pool.settings.claudePath, ['setup-token'], env);
+        return send(200, { ok: true });
+      }
+
       // accounts
       if (m === 'POST' && pathname === '/api/accounts') {
         const { name, type, secret } = await body(req);
         pool.load();
         const a = pool.add({ name, type, secret: secret?.trim() });
         ping();
-        return send(201, { id: a.id, note: type === 'login' ? `Now sign in from a terminal: multiclaude login ${a.id}` : undefined });
+        return send(201, { id: a.id });
       }
       if ((match = pathname.match(/^\/api\/accounts\/([^/]+)(?:\/(\w+))?$/))) {
         const [, id, action] = match;
@@ -131,6 +144,11 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
         else if (m === 'POST' && action === 'enable') pool.setEnabled(id, true);
         else if (m === 'POST' && action === 'disable') pool.setEnabled(id, false, 'disabled by you');
         else if (m === 'POST' && action === 'reset') pool.clearLimit(id);
+        else if (m === 'POST' && action === 'login') {
+          const a = pool.find(id);
+          if (!a) return send(404, { error: 'No such account' });
+          openTerminal(pool.settings.claudePath, ['auth', 'login'], pool.envFor(a));
+        }
         else return send(404, { error: 'Unknown action' });
         ping();
         return send(200, { ok: true });
@@ -165,6 +183,13 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
 
   return new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(port, host, () => resolve({ server, url: `http://${host}:${port}/#token=${token}`, token, sessions }));
+    server.listen(port, host, () => resolve({
+      server,
+      url: `http://${host}:${server.address().port}/#token=${token}`,
+      token,
+      sessions,
+      // how many UI windows are connected, and whether Claude is mid-task (used to exit when idle)
+      activity: () => ({ windows: globalClients.size, busy: sessions.list().some((x) => x.busy) }),
+    }));
   });
 }
