@@ -60,6 +60,11 @@
   .sub:hover { background: var(--panel); color: var(--ink2); }
   .sub.on { background: var(--panel2); color: var(--ink); }
   .sub .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .sub .x { opacity: 0; color: var(--muted); padding: 0 4px; border-radius: 5px; font-size: 12px; white-space: nowrap; }
+  .sub:hover .x, .sub .x.armed { opacity: 1; }
+  .sub .x:hover { color: var(--bad); }
+  .sub .x.armed { color: #fff; background: var(--bad); }
+  @media (hover: none) { .sub .x { opacity: .7; } }
   .dot.bad { background: var(--bad); }
   .foot { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .foot:hover { background: var(--panel); }
@@ -269,10 +274,30 @@
             <div class="spacer"></div>
             <div class="pick"><select id="modelSel" title="Model">
               <option value="">Default model</option>
-              <option value="opus">Opus</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="fable">Fable</option>
-              <option value="haiku">Haiku</option>
+              <optgroup label="Latest of each">
+                <option value="opus">Opus (latest)</option>
+                <option value="sonnet">Sonnet (latest)</option>
+                <option value="fable">Fable (latest)</option>
+                <option value="haiku">Haiku (latest)</option>
+              </optgroup>
+              <optgroup label="Opus">
+                <option value="claude-opus-5-5">Opus 5.5</option>
+                <option value="claude-opus-5">Opus 5</option>
+                <option value="claude-opus-4-8">Opus 4.8</option>
+                <option value="claude-opus-4-7">Opus 4.7</option>
+                <option value="claude-opus-4-6">Opus 4.6</option>
+              </optgroup>
+              <optgroup label="Sonnet">
+                <option value="claude-sonnet-5">Sonnet 5</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+              </optgroup>
+              <optgroup label="Fable">
+                <option value="claude-fable-5-1">Fable 5.1</option>
+                <option value="claude-fable-5">Fable 5</option>
+              </optgroup>
+              <optgroup label="Haiku">
+                <option value="claude-haiku-4-5">Haiku 4.5</option>
+              </optgroup>
             </select></div>
             <div class="pick"><select id="effortSel" title="Effort">
               <option value="">Default effort</option>
@@ -482,6 +507,7 @@ function renderSidebar() {
     ${open ? `<div class="subs">${subs.map((a) => `
       <div class="sub ${s.id === currentId && currentSub === a.id ? 'on' : ''}" data-sid="${esc(s.id)}" data-sub="${esc(a.id)}" title="${esc(a.type)} · ${esc(a.status)}">
         <span class="dot ${a.status === 'running' ? 'busy' : a.status === 'failed' ? 'bad' : ''}"></span><span class="t">${esc(a.description)}</span>
+        ${a.status === 'running' ? '' : `<button class="x" data-subdel="${esc(a.id)}" data-sid="${esc(s.id)}" title="Delete (click twice)">✕</button>`}
       </div>`).join('')}</div>` : ''}`;
   }).join('') || '<div class="meta" style="padding:4px 12px">No sessions yet</div>';
   const a = state.accounts.find((x) => x.active) || state.accounts[0];
@@ -490,7 +516,23 @@ function renderSidebar() {
   $('#footName').textContent = a ? a.name : 'No accounts';
   $('#footMeta').textContent = state.accounts.length ? `${ready} of ${state.accounts.length} accounts ready` : 'Add one to start';
 }
+// Subagent delete: first click arms the button, a second click within 3 seconds deletes.
+async function deleteSubagent(btn) {
+  if (!btn.classList.contains('armed')) {
+    btn.classList.add('armed'); btn.textContent = 'Delete?';
+    setTimeout(() => { if (btn.isConnected) { btn.classList.remove('armed'); btn.textContent = '✕'; } }, 3000);
+    return;
+  }
+  const { sid, subdel } = btn.dataset;
+  try {
+    await api('DELETE', `/api/sessions/${sid}/subagents/${encodeURIComponent(subdel)}`);
+    if (currentId === sid && currentSub === subdel) openSession(sid);
+    refresh();
+  } catch (err) { alert(err.message); }
+}
 $('#recents').addEventListener('click', async (e) => {
+  const subDel = e.target.closest('[data-subdel]');
+  if (subDel) { e.stopPropagation(); deleteSubagent(subDel); return; }
   const del = e.target.closest('[data-del]');
   if (del) { e.stopPropagation(); if (confirm('Delete this session from MultiClaude? (The Claude transcript stays on disk and can be reopened with /resume.)')) { await api('DELETE', '/api/sessions/' + del.dataset.del); if (del.dataset.del === currentId) openSession(null); refresh(); } return; }
   const twist = e.target.closest('[data-twist]');
@@ -777,8 +819,11 @@ function openSession(id, sub = null) {
 /* ---------- composer ---------- */
 const promptEl = $('#prompt');
 for (const [id, key, def] of [['#permSel', 'perm', 'default'], ['#modelSel', 'model', ''], ['#effortSel', 'effort', '']]) {
-  $(id).value = store.get(key, def);
+  const saved = store.get(key, def);
+  $(id).value = saved;
+  if ($(id).selectedIndex < 0 && id === '#modelSel' && saved) $(id).add(new Option(saved, saved)); // a custom /model id
   if ($(id).selectedIndex < 0) $(id).value = def;
+  else $(id).value = saved;
   $(id).addEventListener('change', () => { store.set(key, $(id).value); renderTop(); });
 }
 function grow() { promptEl.style.height = 'auto'; promptEl.style.height = Math.min(240, promptEl.scrollHeight) + 'px'; }
@@ -963,10 +1008,11 @@ function renderSettings() {
         <span class="pill ${a.status}">${a.status === 'limited' ? 'resets in ' + dur(a.limitedUntil - Date.now()) : a.status}</span></div>
       <div class="meta">${a.turns} message${a.turns === 1 ? '' : 's'}${a.costUsd ? ` · $${a.costUsd.toFixed(2)} API-equivalent` : ''}${a.active ? ' · in use' : ''}</div>
       ${Object.entries(a.windows || {}).map(([k, w]) => `<div class="meta">${esc(k.replace(/_/g, ' '))} window: ${Math.round((w.utilization || 0) * 100)}% used</div><div class="meter"><i style="width:${Math.min(100, (w.utilization || 0) * 100)}%"></i></div>`).join('')}
+      ${Object.entries(a.modelLimits || {}).map(([m, t]) => `<div class="meta"><span class="pill limited">${esc(m[0].toUpperCase() + m.slice(1))} only · resets in ${dur(t - Date.now())}</span> other models still work on this account</div>`).join('')}
       ${a.lastError && a.status !== 'ready' ? `<div class="meta">${esc(a.lastError)}</div>` : ''}
       <div class="acts">
         ${a.active ? '' : `<button class="btn" data-a="use" data-id="${esc(a.id)}">Use now</button>`}
-        ${a.status === 'limited' ? `<button class="btn" data-a="reset" data-id="${esc(a.id)}">Clear limit</button>` : ''}
+        ${a.status === 'limited' || Object.keys(a.modelLimits || {}).length ? `<button class="btn" data-a="reset" data-id="${esc(a.id)}">Clear limit</button>` : ''}
         <button class="btn" data-a="${a.enabled ? 'disable' : 'enable'}" data-id="${esc(a.id)}">${a.enabled ? 'Pause' : 'Enable'}</button>
         <button class="btn" data-a="remove" data-id="${esc(a.id)}">Remove</button>
       </div>

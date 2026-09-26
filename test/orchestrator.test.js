@@ -103,3 +103,23 @@ test('API keys never leak into other accounts\' environments', () => {
   assert.equal(env.ANTHROPIC_AUTH_TOKEN, undefined);
   assert.equal(env.PATH, '/bin');
 });
+
+test('an Opus limit only blocks Opus; other models keep using the account', () => {
+  const pool = freshPool(['key-ok']);
+  pool.markLimited('key-ok', Date.now() + 36e5, 'Opus weekly limit reached', 'opus');
+  assert.equal(pool.pick(Date.now(), 'opus')?.id, undefined);
+  assert.equal(pool.pick(Date.now(), 'claude-sonnet-5').id, 'key-ok');
+  assert.equal(pool.pick(Date.now(), '').id, 'key-ok');
+  assert.match(pool.modelBlock('claude-opus-5-5'), /Opus limit/);
+  assert.equal(pool.describe()[0].status, 'ready');
+  pool.clearLimit('key-ok');
+  assert.equal(pool.pick(Date.now(), 'opus').id, 'key-ok');
+});
+
+test('a mid-usage window does not retire the account', async () => {
+  const { retireIfNearlyFull } = await import('../src/orchestrator.js');
+  const pool = freshPool(['key-a', 'key-b']);
+  const windows = { five_hour: { utilization: 0.54, resetsAt: Date.now() + 36e5 }, seven_day: { utilization: 0.24, resetsAt: Date.now() + 864e5 } };
+  assert.equal(retireIfNearlyFull(pool, pool.find('key-a'), { rejected: false, windows }), null);
+  assert.equal(pool.isAvailable(pool.find('key-a')), true);
+});

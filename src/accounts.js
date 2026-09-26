@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { paths } from './paths.js';
 import { readJson, writeJson } from './store.js';
+import { modelFamily } from './limits.js';
 
 export const ACCOUNT_TYPES = {
   api: 'Anthropic API key (ANTHROPIC_API_KEY)',
@@ -150,6 +151,7 @@ export class AccountPool {
 
   stateOf(id) {
     this.state.accounts[id] ??= { limitedUntil: null, lastError: null, lastUsed: null, turns: 0, costUsd: 0, windows: {} };
+    this.state.accounts[id].modelLimits ??= {};
     return this.state.accounts[id];
   }
 
@@ -202,14 +204,17 @@ export class AccountPool {
     return env;
   }
 
-  isAvailable(account, now = Date.now()) {
+  /** Usable now? With a model, also checks that model's own (e.g. Opus weekly) limit. */
+  isAvailable(account, now = Date.now(), model = null) {
     if (!account.enabled) return false;
     const s = this.stateOf(account.id);
-    return !s.limitedUntil || s.limitedUntil <= now;
+    if (s.limitedUntil && s.limitedUntil > now) return false;
+    const fam = modelFamily(model);
+    return !(fam && s.modelLimits[fam] > now);
   }
 
-  available(now = Date.now()) {
-    return this.accounts.filter((a) => this.isAvailable(a, now));
+  available(now = Date.now(), model = null) {
+    return this.accounts.filter((a) => this.isAvailable(a, now, model));
   }
 
   get active() {
@@ -225,38 +230,69 @@ export class AccountPool {
   }
 
   /** The next available account after `fromId` in pool order (wrapping), or null. */
-  nextAvailable(fromId, now = Date.now()) {
+  nextAvailable(fromId, now = Date.now(), model = null) {
     const list = this.accounts;
     if (!list.length) return null;
     const start = Math.max(0, list.findIndex((a) => a.id === fromId));
     for (let i = 1; i <= list.length; i++) {
       const cand = list[(start + i) % list.length];
-      if (this.isAvailable(cand, now)) return cand;
+      if (this.isAvailable(cand, now, model)) return cand;
     }
     return null;
   }
 
   /** Account to use for the next turn, per strategy. Null means "everything is limited". */
-  pick(now = Date.now()) {
+  pick(now = Date.now(), model = null) {
     const active = this.active;
     if (!active) return null;
-    if (this.settings.strategy === 'wait') return this.isAvailable(active, now) ? active : null;
-    if (this.isAvailable(active, now)) return active;
-    return this.nextAvailable(active.id, now);
+    if (this.settings.strategy === 'wait') return this.isAvailable(active, now, model) ? active : null;
+    if (this.isAvailable(active, now, model)) return active;
+    return this.nextAvailable(active.id, now, model);
+  }
+
+  /** When an account is usable again: the later of its account-wide and model limits. */
+  #freeAt(id, model, now = Date.now()) {
+    const s = this.stateOf(id);
+    const fam = modelFamily(model);
+    const t = Math.max(s.limitedUntil || 0, (fam && s.modelLimits[fam]) || 0);
+    return t > now ? t : null;
   }
 
   /** When the earliest limited (but enabled) account frees up. */
-  earliestReset() {
+  earliestReset(model = null) {
     const times = this.accounts
       .filter((a) => a.enabled)
-      .map((a) => this.stateOf(a.id).limitedUntil)
+      .map((a) => this.#freeAt(a.id, model))
       .filter(Boolean);
     return times.length ? Math.min(...times) : null;
   }
 
-  markLimited(id, until, reason) {
+  /** What to wait for when pick() found nothing, per strategy. */
+  blockedUntil(model = null) {
+    if (this.settings.strategy === 'wait' && this.active) return this.#freeAt(this.active.id, model) || this.earliestReset(model);
+    return this.earliestReset(model);
+  }
+
+  /**
+   * When only a model-specific limit (like Opus weekly) stands in the way, a message telling the
+   * user to pick another model, since waiting could take days. Null otherwise.
+   */
+  modelBlock(model = null, now = Date.now()) {
+    const fam = modelFamily(model);
+    if (!fam) return null;
+    const candidates = this.settings.strategy === 'wait' ? [this.active].filter(Boolean) : this.accounts;
+    if (!candidates.some((a) => this.isAvailable(a, now))) return null; // limited account-wide anyway
+    const until = this.earliestReset(model);
+    const name = fam[0].toUpperCase() + fam.slice(1);
+    return `Every account has used up its ${name} limit${until ? ` (resets ${new Date(until).toLocaleString()})` : ''}. ` +
+      'Pick another model in the model menu to keep going; your accounts still have room for those.';
+  }
+
+  /** Retire an account until `until`. With a model family scope, only for that model. */
+  markLimited(id, until, reason, scope = null) {
     const s = this.stateOf(id);
-    s.limitedUntil = until;
+    if (scope) s.modelLimits[scope] = until;
+    else s.limitedUntil = until;
     s.lastError = reason || 'usage limit reached';
     this.save();
   }
@@ -264,7 +300,7 @@ export class AccountPool {
   clearLimit(ref) {
     const acct = this.find(ref);
     if (!acct) throw new Error(`No account "${ref}"`);
-    Object.assign(this.stateOf(acct.id), { limitedUntil: null, lastError: null });
+    Object.assign(this.stateOf(acct.id), { limitedUntil: null, lastError: null, modelLimits: {} });
     this.save();
     return acct;
   }
@@ -283,8 +319,11 @@ export class AccountPool {
     s.turns += 1;
     s.costUsd = Math.round((s.costUsd + (costUsd || 0)) * 1e6) / 1e6;
     s.lastUsed = Date.now();
-    s.lastError = null;
-    if (windows && Object.keys(windows).length) s.windows = windows;
+    if (!s.limitedUntil || s.limitedUntil <= Date.now()) s.lastError = null;
+    // Claude Code reports one window at a time, so keep the others; drop ones that have reset.
+    const merged = { ...(s.windows || {}), ...(windows || {}) };
+    for (const [k, w] of Object.entries(merged)) if (w?.resetsAt && w.resetsAt <= Date.now()) delete merged[k];
+    s.windows = merged;
     this.save();
   }
 
@@ -302,11 +341,12 @@ export class AccountPool {
         active: a.id === this.active?.id,
         status: !a.enabled ? 'disabled' : limited ? 'limited' : 'ready',
         limitedUntil: limited ? s.limitedUntil : null,
+        modelLimits: Object.fromEntries(Object.entries(s.modelLimits).filter(([, t]) => t > now)),
         lastError: s.lastError,
         lastUsed: s.lastUsed,
         turns: s.turns,
         costUsd: s.costUsd,
-        windows: s.windows || {},
+        windows: Object.fromEntries(Object.entries(s.windows || {}).filter(([, w]) => !w?.resetsAt || w.resetsAt > now)),
       };
     });
   }

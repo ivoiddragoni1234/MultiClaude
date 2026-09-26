@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { classifyOutcome, readRateLimitEvent } from './limits.js';
+import { classifyOutcome, readRateLimitEvent, mergeRateLimit } from './limits.js';
 import { memoryPrompt } from './memory.js';
 import { claudeSpawn, claudeSupports, INSTALL_HINT } from './claude-path.js';
 import { CONTINUE_PROMPT, retireIfNearlyFull, firstLine, waitUntil } from './orchestrator.js';
@@ -94,6 +94,7 @@ export class LiveSession extends EventEmitter {
   async send(text, overrides = {}) {
     this.lastActivity = Date.now();
     const midTurn = this.busy && Boolean(this.proc);
+    if (!midTurn) this.rateLimit = null; // a fresh turn: judge it by its own limit events only
     this.inflight.push(text);
     this.#setBusy(true);
     try {
@@ -187,7 +188,7 @@ export class LiveSession extends EventEmitter {
     const opts = this.#options(overrides);
     this.pool.load();
     if (this.proc) {
-      const accountOk = this.account && this.pool.find(this.account.id) && this.pool.isAvailable(this.pool.find(this.account.id));
+      const accountOk = this.account && this.pool.find(this.account.id) && this.pool.isAvailable(this.pool.find(this.account.id), Date.now(), opts.model);
       if (accountOk && sameOpts(opts, this.opts)) return;
       // Settings changed or the account was retired: restart between turns, never mid-turn.
       if (midTurn) {
@@ -241,7 +242,7 @@ export class LiveSession extends EventEmitter {
     for (;;) {
       pool.load();
       if (!pool.accounts.length) throw new Error('No accounts yet. Open Accounts to add one.');
-      const account = pool.pick();
+      const account = pool.pick(Date.now(), opts.model);
       if (account) {
         if (account.id !== pool.config.activeAccountId) {
           const from = pool.find(pool.config.activeAccountId);
@@ -251,10 +252,10 @@ export class LiveSession extends EventEmitter {
         this.#spawn(account, opts);
         return;
       }
-      const until = pool.settings.strategy === 'wait'
-        ? pool.stateOf(pool.active.id).limitedUntil || pool.earliestReset()
-        : pool.earliestReset();
+      const until = pool.blockedUntil(opts.model);
       if (!until) throw new Error('Every account is paused or disabled. Enable one in Accounts.');
+      const modelBlock = pool.modelBlock(opts.model);
+      if (modelBlock) throw new Error(modelBlock);
       if (pool.settings.onAllLimited !== 'wait') throw new Error(`All accounts are at their limit. Earliest reset: ${new Date(until).toLocaleString()}`);
       this.waitController = new AbortController();
       this.emit('waiting', { until, msLeft: until - Date.now() });
@@ -378,7 +379,7 @@ export class LiveSession extends EventEmitter {
         }
         break;
       case 'rate_limit_event':
-        this.rateLimit = readRateLimitEvent(msg.rate_limit_info);
+        this.rateLimit = mergeRateLimit(this.rateLimit, readRateLimitEvent(msg.rate_limit_info));
         break;
       case 'control_request':
         this.#onControlRequest(msg);
@@ -433,10 +434,12 @@ export class LiveSession extends EventEmitter {
         const retired = retireIfNearlyFull(this.pool, this.account, this.rateLimit);
         if (retired) this.emit('limited', { account: this.account, ...retired, proactive: true });
         if (this.pool.settings.strategy === 'round-robin') {
-          const next = this.pool.nextAvailable(this.account.id);
+          const next = this.pool.nextAvailable(this.account.id, Date.now(), this.opts?.model);
           if (next && next.id !== this.account.id) this.pool.setActive(next.id);
         }
       }
+      // Don't let this turn's limit events count against the next one (e.g. after "Clear limit").
+      this.rateLimit = null;
       this.inflight = [];
       this.#setBusy(false);
       this.emit('turn_end', { aborted });
@@ -458,8 +461,8 @@ export class LiveSession extends EventEmitter {
     pool.load();
     if (outcome.kind === 'rate_limited') {
       const until = outcome.resetsAt || Date.now() + pool.settings.defaultCooldownMinutes * 6e4;
-      pool.markLimited(account.id, until, firstLine(outcome.message));
-      this.emit('limited', { account, until, message: firstLine(outcome.message) });
+      pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope);
+      this.emit('limited', { account, until, message: firstLine(outcome.message), modelScope: outcome.modelScope });
     } else if (outcome.kind === 'auth' || outcome.kind === 'billing') {
       const why = outcome.kind === 'auth' ? 'sign-in failed' : 'out of credit';
       pool.setEnabled(account.id, false, `${why}: ${firstLine(outcome.message)}`);

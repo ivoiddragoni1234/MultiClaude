@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseResetTime, classifyOutcome, readRateLimitEvent, lineShowsLimit } from '../src/limits.js';
+import { parseResetTime, classifyOutcome, readRateLimitEvent, lineShowsLimit, mergeRateLimit, modelFamily } from '../src/limits.js';
 
 const now = new Date('2026-01-01T10:00:00').getTime();
 
@@ -34,4 +34,23 @@ test('classifies outcomes', () => {
 test('spots limits in transcript text', () => {
   assert.ok(lineShowsLimit("You've hit your limit · resets 3pm"));
   assert.ok(!lineShowsLimit('Here is your answer'));
+});
+
+test("reads Claude Code's one-window-per-event rate limit format", () => {
+  const a = readRateLimitEvent({ status: 'allowed_warning', rateLimitType: 'five_hour', utilization: 0.54, resetsAt: 1790388000 });
+  const b = readRateLimitEvent({ status: 'allowed', rateLimitType: 'seven_day', utilization: 0.24, resetsAt: 1790900000 });
+  const m = mergeRateLimit(a, b);
+  assert.equal(m.windows.five_hour.utilization, 0.54);
+  assert.equal(m.windows.seven_day.utilization, 0.24);
+  assert.equal(m.rejected, false);
+});
+
+test('an Opus-only rejection is scoped to Opus', () => {
+  const rl = readRateLimitEvent({ status: 'rejected', rateLimitType: 'seven_day_opus', resetsAt: 1790388000 });
+  assert.equal(rl.modelScope, 'opus');
+  const out = classifyOutcome({ result: { is_error: true, result: '' }, rateLimit: rl });
+  assert.deepEqual([out.kind, out.modelScope], ['rate_limited', 'opus']);
+  assert.equal(classifyOutcome({ result: { is_error: true, result: "You've hit your Opus limit · resets 3pm" } }).modelScope, 'opus');
+  assert.equal(modelFamily('claude-opus-5-5'), 'opus');
+  assert.equal(modelFamily(''), null);
 });

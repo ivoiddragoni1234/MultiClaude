@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { runTurn } from './runner.js';
+import { MODEL_WINDOWS, limitLabel, modelFamily } from './limits.js';
 
 export const CONTINUE_PROMPT =
   'Your previous turn was cut off because the account running it hit a usage limit. ' +
@@ -68,13 +69,14 @@ export class Orchestrator extends EventEmitter {
 
     for (;;) {
       pool.load(); // pick up changes made from other windows (CLI, web UI)
-      let account = pool.pick();
+      const model = overrides.model || pool.settings.model;
+      let account = pool.pick(Date.now(), model);
 
       if (!account) {
-        const until = pool.settings.strategy === 'wait'
-          ? pool.stateOf(pool.active.id).limitedUntil || pool.earliestReset()
-          : pool.earliestReset();
+        const until = pool.blockedUntil(model);
         if (!until) throw new Error('Every account is disabled. Enable or add one to continue.');
+        const modelBlock = pool.modelBlock(model);
+        if (modelBlock) throw new Error(modelBlock);
         if (pool.settings.onAllLimited !== 'wait') {
           throw new Error(`All accounts are at their limit. Earliest reset: ${new Date(until).toLocaleString()}`);
         }
@@ -120,8 +122,8 @@ export class Orchestrator extends EventEmitter {
 
         case 'rate_limited': {
           const until = outcome.resetsAt || Date.now() + pool.settings.defaultCooldownMinutes * 6e4;
-          pool.markLimited(account.id, until, firstLine(outcome.message));
-          this.emit('limited', { account, until, message: firstLine(outcome.message) });
+          pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope);
+          this.emit('limited', { account, until, message: firstLine(outcome.message), modelScope: outcome.modelScope });
           // The interrupted turn is saved in the shared transcript; ask the next account to resume it.
           if (this.sessionId) prompt = CONTINUE_PROMPT;
           overloadAttempts = 0;
@@ -165,16 +167,25 @@ export function retireIfNearlyFull(pool, account, rateLimit) {
   if (!rateLimit) return null;
   const threshold = pool.settings.switchAtUtilization;
   const canSwitch = pool.accounts.length > 1 && pool.settings.strategy !== 'wait';
-  let until = rateLimit.rejected ? rateLimit.resetsAt : null;
+  // Account-wide windows retire the account; model windows (Opus/Sonnet weekly) only that model.
+  const untils = { '': null };
+  const bump = (scope, t) => { if (t && t > Date.now()) untils[scope] = Math.max(untils[scope] || 0, t); };
+  if (rateLimit.rejected) bump(rateLimit.modelScope || '', rateLimit.resetsAt);
   if (canSwitch && threshold < 1) {
-    for (const w of Object.values(rateLimit.windows || {})) {
-      if (w.utilization != null && w.utilization >= threshold && w.resetsAt) until = Math.max(until || 0, w.resetsAt);
+    for (const [name, w] of Object.entries(rateLimit.windows || {})) {
+      if (w.utilization != null && w.utilization >= threshold) bump(MODEL_WINDOWS[name] || '', w.resetsAt);
     }
   }
-  if (!until || until <= Date.now()) return null;
-  const message = rateLimit.rejected ? 'usage limit reached' : 'window nearly full, switching early';
-  pool.markLimited(account.id, until, message);
-  return { until, message };
+  let result = null;
+  for (const [scope, until] of Object.entries(untils)) {
+    if (!until) continue;
+    const message = rateLimit.rejected && (rateLimit.modelScope || '') === scope
+      ? limitLabel(rateLimit)
+      : scope ? `${scope} window nearly full, switching early` : 'window nearly full, switching early';
+    pool.markLimited(account.id, until, message, scope || null);
+    if (!result || !scope) result = { until, message, modelScope: scope || null };
+  }
+  return result;
 }
 
 export function firstLine(s) {

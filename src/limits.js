@@ -3,7 +3,8 @@
 
 const LIMIT_PATTERNS = [
   /usage limit reached/i,
-  /you'?ve hit your (usage )?limit/i,
+  /you'?ve hit your (usage |weekly |session |opus |sonnet )?limit/i,
+  /\b(opus|sonnet) limit\b/i,
   /(5|five)[- ]hour limit/i,
   /weekly limit/i,
   /limit (will )?resets?/i,
@@ -66,23 +67,51 @@ export function parseResetTime(text, now = Date.now()) {
   return null;
 }
 
-/** Normalise Claude Code's `rate_limit_event` payload. */
+// Claude Code reports these limits per model family; the account still works on other models.
+export const MODEL_WINDOWS = { seven_day_opus: 'opus', seven_day_sonnet: 'sonnet' };
+
+/** The model family a `--model` value belongs to ('opus', 'sonnet', ...), or null for the default. */
+export function modelFamily(model) {
+  const m = String(model || '').toLowerCase();
+  return ['opus', 'sonnet', 'haiku', 'fable'].find((f) => m.includes(f)) || null;
+}
+
+// Utilization is a 0-1 fraction; tolerate a percentage just in case.
+const fraction = (u) => (typeof u === 'number' ? (u > 1.5 ? u / 100 : u) : null);
+
+/**
+ * Normalise Claude Code's `rate_limit_event` payload. Claude Code sends one window per event
+ * (`rateLimitType` + `utilization`); some builds also send every window in `unifiedWindows`.
+ */
 export function readRateLimitEvent(info) {
   if (!info || typeof info !== 'object') return null;
   const toMs = (s) => (typeof s === 'number' ? (s < 1e12 ? s * 1000 : s) : null);
   const windows = {};
   for (const [name, w] of Object.entries(info.unifiedWindows || {})) {
-    windows[name] = { utilization: w?.utilization ?? null, resetsAt: toMs(w?.resetsAt) };
+    windows[name] = { utilization: fraction(w?.utilization) ?? null, resetsAt: toMs(w?.resetsAt) };
+  }
+  const type = info.rateLimitType || null;
+  if (type && type !== 'overage' && info.utilization != null && !windows[type]) {
+    windows[type] = { utilization: fraction(info.utilization), resetsAt: toMs(info.resetsAt) };
   }
   // With extra usage (overage) turned on, requests keep working after the plan limit.
   const onOverage = info.isUsingOverage === true || info.overageStatus === 'allowed' || info.overageStatus === 'allowed_warning';
   return {
     rejected: info.status === 'rejected' && !onOverage,
     status: info.status || null,
-    type: info.rateLimitType || null,
+    type,
+    // A rejection of a model-specific window only blocks that model family, not the account.
+    modelScope: MODEL_WINDOWS[type] || null,
     resetsAt: toMs(info.resetsAt),
     windows,
   };
+}
+
+/** Fold a newer rate-limit event into the one seen earlier in the same turn. */
+export function mergeRateLimit(prev, next) {
+  if (!next) return prev;
+  if (!prev) return next;
+  return { ...next, windows: { ...prev.windows, ...next.windows } };
 }
 
 /**
@@ -99,14 +128,25 @@ export function classifyOutcome({ result, rateLimit, stderr = '', exitCode = 0, 
   // squeezed in); the caller retires the account for the next turn in that case.
   if (!isError) return { kind: 'ok', resetsAt: null, message: resultText };
   if (rateLimit?.rejected) {
-    return { kind: 'rate_limited', resetsAt: rateLimit.resetsAt ?? parseResetTime(text, now), message: text || 'usage limit reached' };
+    return { kind: 'rate_limited', resetsAt: rateLimit.resetsAt ?? parseResetTime(text, now), modelScope: rateLimit.modelScope, message: text || limitLabel(rateLimit) };
   }
 
   if (any(BILLING_PATTERNS, text)) return { kind: 'billing', resetsAt: null, message: text };
-  if (any(LIMIT_PATTERNS, text)) return { kind: 'rate_limited', resetsAt: parseResetTime(text, now), message: text };
+  if (any(LIMIT_PATTERNS, text)) {
+    const scope = text.match(/\b(opus|sonnet) limit\b/i)?.[1].toLowerCase() || null;
+    return { kind: 'rate_limited', resetsAt: parseResetTime(text, now), modelScope: scope, message: text };
+  }
   if (any(OVERLOAD_PATTERNS, text)) return { kind: 'overloaded', resetsAt: null, message: text };
   if (any(AUTH_PATTERNS, text)) return { kind: 'auth', resetsAt: null, message: text };
   return { kind: 'error', resetsAt: null, message: text || `claude exited with code ${exitCode}` };
+}
+
+/** Human wording for a rejected limit event. */
+export function limitLabel(rateLimit) {
+  if (rateLimit?.modelScope) return `${rateLimit.modelScope[0].toUpperCase()}${rateLimit.modelScope.slice(1)} weekly limit reached (other models still work)`;
+  if (rateLimit?.type === 'seven_day') return 'weekly limit reached';
+  if (rateLimit?.type === 'five_hour') return '5-hour limit reached';
+  return 'usage limit reached';
 }
 
 /** True when a transcript line (from an interactive session) reports a usage limit. */

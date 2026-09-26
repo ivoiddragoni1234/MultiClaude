@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
-import { classifyOutcome, readRateLimitEvent } from './limits.js';
+import { classifyOutcome, readRateLimitEvent, mergeRateLimit } from './limits.js';
 import { memoryPrompt } from './memory.js';
 import { claudeSpawn, INSTALL_HINT } from './claude-path.js';
 
@@ -108,7 +108,7 @@ export function runTurn({ pool, account, prompt, sessionId, overrides, cwd = pro
           }
           break;
         case 'rate_limit_event':
-          rateLimit = readRateLimitEvent(msg.rate_limit_info);
+          rateLimit = mergeRateLimit(rateLimit, readRateLimitEvent(msg.rate_limit_info));
           onEvent({ type: 'rate_limit', info: rateLimit });
           break;
         case 'result':
