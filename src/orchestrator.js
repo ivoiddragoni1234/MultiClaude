@@ -122,7 +122,7 @@ export class Orchestrator extends EventEmitter {
 
         case 'rate_limited': {
           const until = outcome.resetsAt || Date.now() + pool.settings.defaultCooldownMinutes * 6e4;
-          pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope);
+          pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope, outcome.window);
           this.emit('limited', { account, until, message: firstLine(outcome.message), modelScope: outcome.modelScope });
           // The interrupted turn is saved in the shared transcript; ask the next account to resume it.
           if (this.sessionId) prompt = CONTINUE_PROMPT;
@@ -182,7 +182,8 @@ export function retireIfNearlyFull(pool, account, rateLimit) {
     const message = rateLimit.rejected && (rateLimit.modelScope || '') === scope
       ? limitLabel(rateLimit)
       : scope ? `${scope} window nearly full, switching early` : 'window nearly full, switching early';
-    pool.markLimited(account.id, until, message, scope || null);
+    const window = rateLimit.rejected && (rateLimit.modelScope || '') === scope ? rateLimit.type : null;
+    pool.markLimited(account.id, until, message, scope || null, window);
     if (!result || !scope) result = { until, message, modelScope: scope || null };
   }
   return result;

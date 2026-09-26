@@ -88,11 +88,11 @@ export function readRateLimitEvent(info) {
   const toMs = (s) => (typeof s === 'number' ? (s < 1e12 ? s * 1000 : s) : null);
   const windows = {};
   for (const [name, w] of Object.entries(info.unifiedWindows || {})) {
-    windows[name] = { utilization: fraction(w?.utilization) ?? null, resetsAt: toMs(w?.resetsAt) };
+    windows[name] = { utilization: fraction(w?.utilization) ?? null, resetsAt: toMs(w?.resetsAt), at: Date.now() };
   }
   const type = info.rateLimitType || null;
   if (type && type !== 'overage' && info.utilization != null && !windows[type]) {
-    windows[type] = { utilization: fraction(info.utilization), resetsAt: toMs(info.resetsAt) };
+    windows[type] = { utilization: fraction(info.utilization), resetsAt: toMs(info.resetsAt), at: Date.now() };
   }
   // With extra usage (overage) turned on, requests keep working after the plan limit.
   const onOverage = info.isUsingOverage === true || info.overageStatus === 'allowed' || info.overageStatus === 'allowed_warning';
@@ -128,17 +128,26 @@ export function classifyOutcome({ result, rateLimit, stderr = '', exitCode = 0, 
   // squeezed in); the caller retires the account for the next turn in that case.
   if (!isError) return { kind: 'ok', resetsAt: null, message: resultText };
   if (rateLimit?.rejected) {
-    return { kind: 'rate_limited', resetsAt: rateLimit.resetsAt ?? parseResetTime(text, now), modelScope: rateLimit.modelScope, message: text || limitLabel(rateLimit) };
+    return { kind: 'rate_limited', resetsAt: rateLimit.resetsAt ?? parseResetTime(text, now), modelScope: rateLimit.modelScope, window: rateLimit.type || limitWindow(text), message: text || limitLabel(rateLimit) };
   }
 
   if (any(BILLING_PATTERNS, text)) return { kind: 'billing', resetsAt: null, message: text };
   if (any(LIMIT_PATTERNS, text)) {
     const scope = text.match(/\b(opus|sonnet) limit\b/i)?.[1].toLowerCase() || null;
-    return { kind: 'rate_limited', resetsAt: parseResetTime(text, now), modelScope: scope, message: text };
+    return { kind: 'rate_limited', resetsAt: parseResetTime(text, now), modelScope: scope, window: limitWindow(text), message: text };
   }
   if (any(OVERLOAD_PATTERNS, text)) return { kind: 'overloaded', resetsAt: null, message: text };
   if (any(AUTH_PATTERNS, text)) return { kind: 'auth', resetsAt: null, message: text };
   return { kind: 'error', resetsAt: null, message: text || `claude exited with code ${exitCode}` };
+}
+
+/** Which usage window a limit message is about, from Claude Code's wording. */
+export function limitWindow(text) {
+  if (/\bopus limit/i.test(text)) return 'seven_day_opus';
+  if (/\bsonnet limit/i.test(text)) return 'seven_day_sonnet';
+  if (/session limit|(5|five)[- ]hour/i.test(text)) return 'five_hour';
+  if (/weekly limit/i.test(text)) return 'seven_day';
+  return null;
 }
 
 /** Human wording for a rejected limit event. */

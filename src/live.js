@@ -461,7 +461,7 @@ export class LiveSession extends EventEmitter {
     pool.load();
     if (outcome.kind === 'rate_limited') {
       const until = outcome.resetsAt || Date.now() + pool.settings.defaultCooldownMinutes * 6e4;
-      pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope);
+      pool.markLimited(account.id, until, firstLine(outcome.message), outcome.modelScope, outcome.window);
       this.emit('limited', { account, until, message: firstLine(outcome.message), modelScope: outcome.modelScope });
     } else if (outcome.kind === 'auth' || outcome.kind === 'billing') {
       const why = outcome.kind === 'auth' ? 'sign-in failed' : 'out of credit';

@@ -1001,13 +1001,14 @@ const TYPE_HELP = {
   api: 'An Anthropic Console API key (sk-ant-…). Billed per use.',
   login: 'For Claude Pro/Max. After adding, click <b>Sign in…</b> on the account to log it in.',
 };
+const WINDOW_NAMES = { five_hour: 'Session (5-hour)', seven_day: 'Weekly', seven_day_opus: 'Opus weekly', seven_day_sonnet: 'Sonnet weekly' };
 function renderSettings() {
   $('#acctList').innerHTML = state.accounts.map((a) => `
     <div class="acct ${a.active ? 'active' : ''}">
       <div class="row1"><b>${esc(a.name)}</b><span class="meta">${esc(a.type)} ${esc(a.secret)}</span>
         <span class="pill ${a.status}">${a.status === 'limited' ? 'resets in ' + dur(a.limitedUntil - Date.now()) : a.status}</span></div>
       <div class="meta">${a.turns} message${a.turns === 1 ? '' : 's'}${a.costUsd ? ` · $${a.costUsd.toFixed(2)} API-equivalent` : ''}${a.active ? ' · in use' : ''}</div>
-      ${Object.entries(a.windows || {}).map(([k, w]) => `<div class="meta">${esc(k.replace(/_/g, ' '))} window: ${Math.round((w.utilization || 0) * 100)}% used</div><div class="meter"><i style="width:${Math.min(100, (w.utilization || 0) * 100)}%"></i></div>`).join('')}
+      ${Object.entries(a.windows || {}).map(([k, w]) => `<div class="meta">${esc(WINDOW_NAMES[k] || k.replace(/_/g, ' '))}: ${(w.utilization || 0) >= 1 ? 'full' : `${Math.round((w.utilization || 0) * 100)}% used`}${w.resetsAt ? ` · resets in ${dur(w.resetsAt - Date.now())}` : ''}${w.at ? ` <span title="Claude Code only reports usage at warning points, so this may be out of date">(as of ${dur(Date.now() - w.at)} ago)</span>` : ''}</div><div class="meter"><i style="width:${Math.min(100, (w.utilization || 0) * 100)}%"></i></div>`).join('')}
       ${Object.entries(a.modelLimits || {}).map(([m, t]) => `<div class="meta"><span class="pill limited">${esc(m[0].toUpperCase() + m.slice(1))} only · resets in ${dur(t - Date.now())}</span> other models still work on this account</div>`).join('')}
       ${a.lastError && a.status !== 'ready' ? `<div class="meta">${esc(a.lastError)}</div>` : ''}
       <div class="acts">

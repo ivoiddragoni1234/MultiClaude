@@ -123,3 +123,10 @@ test('a mid-usage window does not retire the account', async () => {
   assert.equal(retireIfNearlyFull(pool, pool.find('key-a'), { rejected: false, windows }), null);
   assert.equal(pool.isAvailable(pool.find('key-a')), true);
 });
+
+test('hitting a limit shows that window as full, not its last warning percentage', () => {
+  const pool = freshPool(['key-ok']);
+  pool.recordTurn('key-ok', { windows: { five_hour: { utilization: 0.38, resetsAt: Date.now() + 36e5 } } });
+  pool.markLimited('key-ok', Date.now() + 36e5, "You've hit your session limit", null, 'five_hour');
+  assert.equal(pool.describe()[0].windows.five_hour.utilization, 1);
+});

@@ -289,10 +289,12 @@ export class AccountPool {
   }
 
   /** Retire an account until `until`. With a model family scope, only for that model. */
-  markLimited(id, until, reason, scope = null) {
+  markLimited(id, until, reason, scope = null, window = null) {
     const s = this.stateOf(id);
     if (scope) s.modelLimits[scope] = until;
     else s.limitedUntil = until;
+    // Limit events carry no percentage, so the last reading would be stale: this window is full.
+    if (window && window !== 'overage') s.windows = { ...(s.windows || {}), [window]: { utilization: 1, resetsAt: until, at: Date.now() } };
     s.lastError = reason || 'usage limit reached';
     this.save();
   }

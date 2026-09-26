@@ -54,3 +54,8 @@ test('an Opus-only rejection is scoped to Opus', () => {
   assert.equal(modelFamily('claude-opus-5-5'), 'opus');
   assert.equal(modelFamily(''), null);
 });
+
+test('limit messages name their window', () => {
+  const out = classifyOutcome({ result: { is_error: true, result: "You've hit your session limit · resets 10pm (America/New_York)" } });
+  assert.deepEqual([out.kind, out.window], ['rate_limited', 'five_hour']);
+});
