@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const isWin = process.platform === 'win32';
 let cached = null;
@@ -67,6 +68,25 @@ export function resolveClaude(configured = 'claude') {
     }
   }
   return { command: 'claude', args: [], shell: false, found: false, path: null };
+}
+
+const helpCache = new Map();
+
+/** Whether the installed Claude Code knows a command-line flag (checked once via --help). */
+export function claudeSupports(configured, flag) {
+  const r = resolveClaude(configured);
+  if (!r.found) return false;
+  const key = `${r.command} ${r.args.join(' ')}`;
+  if (!helpCache.has(key)) {
+    let text = '';
+    try {
+      const sp = claudeSpawn(configured, ['--help']);
+      const out = spawnSync(sp.command, sp.args, { ...sp.options, encoding: 'utf8', timeout: 20000 });
+      text = `${out.stdout || ''}${out.stderr || ''}`;
+    } catch { /* treat as unsupported */ }
+    helpCache.set(key, text);
+  }
+  return helpCache.get(key).includes(flag);
 }
 
 /** Quote arguments for the rare case where we must go through cmd.exe. */

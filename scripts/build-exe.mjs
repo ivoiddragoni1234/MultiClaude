@@ -20,6 +20,13 @@ fs.mkdirSync(cache, { recursive: true });
 
 const step = (msg) => console.log(`\n› ${msg}`);
 
+// 0. The app reports its version so a newer exe can replace an older running one
+{
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  const { VERSION } = await import(new URL('../src/version.js', import.meta.url));
+  if (VERSION !== pkgVersion) throw new Error(`src/version.js (${VERSION}) and package.json (${pkgVersion}) disagree`);
+}
+
 // 1. Bundle everything (with the UI page inlined) into one CommonJS file
 step('Bundling');
 const html = fs.readFileSync(path.join(root, 'web', 'index.html'), 'utf8');

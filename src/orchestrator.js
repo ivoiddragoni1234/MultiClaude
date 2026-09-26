@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { runTurn } from './runner.js';
 
-const CONTINUE_PROMPT =
+export const CONTINUE_PROMPT =
   'Your previous turn was cut off because the account running it hit a usage limit. ' +
   'You are now on a different account with the same conversation. Continue exactly where you left off ' +
   'and finish the original request. Do not repeat work that is already done, and do not mention the interruption.';
@@ -152,24 +152,32 @@ export class Orchestrator extends EventEmitter {
 
   /** Switch before the wall: retire an account whose window is almost used up or already rejected. */
   #retireIfNearlyFull(account, rateLimit) {
-    if (!rateLimit) return;
-    const threshold = this.pool.settings.switchAtUtilization;
-    const canSwitch = this.pool.accounts.length > 1 && this.pool.settings.strategy !== 'wait';
-    let until = rateLimit.rejected ? rateLimit.resetsAt : null;
-    if (canSwitch && threshold < 1) {
-      for (const w of Object.values(rateLimit.windows || {})) {
-        if (w.utilization != null && w.utilization >= threshold && w.resetsAt) until = Math.max(until || 0, w.resetsAt);
-      }
-    }
-    if (until && until > Date.now()) {
-      const message = rateLimit.rejected ? 'usage limit reached' : 'window nearly full, switching early';
-      this.pool.markLimited(account.id, until, message);
-      this.emit('limited', { account, until, message, proactive: true });
-    }
+    const r = retireIfNearlyFull(this.pool, account, rateLimit);
+    if (r) this.emit('limited', { account, ...r, proactive: true });
   }
 }
 
-function firstLine(s) {
+/**
+ * After a successful turn: retire an account whose usage window is almost used up (or already
+ * rejected) so the next turn starts on a fresh one. Returns {until, message} when it did.
+ */
+export function retireIfNearlyFull(pool, account, rateLimit) {
+  if (!rateLimit) return null;
+  const threshold = pool.settings.switchAtUtilization;
+  const canSwitch = pool.accounts.length > 1 && pool.settings.strategy !== 'wait';
+  let until = rateLimit.rejected ? rateLimit.resetsAt : null;
+  if (canSwitch && threshold < 1) {
+    for (const w of Object.values(rateLimit.windows || {})) {
+      if (w.utilization != null && w.utilization >= threshold && w.resetsAt) until = Math.max(until || 0, w.resetsAt);
+    }
+  }
+  if (!until || until <= Date.now()) return null;
+  const message = rateLimit.rejected ? 'usage limit reached' : 'window nearly full, switching early';
+  pool.markLimited(account.id, until, message);
+  return { until, message };
+}
+
+export function firstLine(s) {
   const line = String(s || '').split('\n').find((l) => l.trim())?.trim() || '';
   return line.replace(/\|\s*\d{10,13}\b/, '').slice(0, 300);
 }

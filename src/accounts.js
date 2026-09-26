@@ -46,9 +46,32 @@ export function mask(secret) {
   return secret.length <= 12 ? '••••' : `${secret.slice(0, 10)}…${secret.slice(-4)}`;
 }
 
+let migrated = false;
+
+/** Move transcripts from MultiClaude's old private folder into the shared Claude Code one. */
+function migrateProjects() {
+  if (migrated) return;
+  migrated = true;
+  const old = path.join(paths.shared, 'projects');
+  if (paths.projects === old) return;
+  fs.mkdirSync(paths.projects, { recursive: true });
+  let st = null;
+  try { st = fs.lstatSync(old); } catch { return; }
+  if (st.isSymbolicLink() || !st.isDirectory()) return;
+  const entries = fs.readdirSync(old);
+  if (entries.length) fs.cpSync(old, paths.projects, { recursive: true, force: false, errorOnExist: false });
+  fs.renameSync(old, `${old}.moved-to-claude`);
+}
+
+/** Where each shared name in an account profile should point. */
+function sharedTarget(name) {
+  return name === 'projects' ? paths.projects : path.join(paths.shared, name);
+}
+
 export function ensureSharedLayout() {
   fs.mkdirSync(paths.shared, { recursive: true, mode: 0o700 });
-  for (const d of SHARED_DIRS) fs.mkdirSync(path.join(paths.shared, d), { recursive: true });
+  migrateProjects();
+  for (const d of SHARED_DIRS) fs.mkdirSync(sharedTarget(d), { recursive: true });
   const settings = path.join(paths.shared, 'settings.json');
   if (!fs.existsSync(settings)) fs.writeFileSync(settings, '{}\n');
   if (!fs.existsSync(paths.memory)) {
@@ -72,12 +95,19 @@ function sameFile(a, b) {
 function linkShared(accountDir) {
   const isWin = process.platform === 'win32';
   for (const name of [...SHARED_DIRS, ...SHARED_FILES]) {
-    const target = path.join(paths.shared, name);
+    const target = sharedTarget(name);
     const link = path.join(accountDir, name);
     const isDir = SHARED_DIRS.includes(name);
     let st = null;
     try { st = fs.lstatSync(link); } catch { /* missing */ }
-    if (st?.isSymbolicLink()) continue; // symlink, or a junction on Windows
+    if (st?.isSymbolicLink()) {
+      // symlink, or a junction on Windows: keep it if it still points to the right place
+      let points = null;
+      try { points = path.resolve(accountDir, fs.readlinkSync(link).replace(/^\\\\\?\\/, '')); } catch { /* unreadable */ }
+      if (points && points.toLowerCase() === path.resolve(target).toLowerCase()) continue;
+      fs.unlinkSync(link); // removes the link only, never what it points to
+      st = null;
+    }
     if (st && !isDir && sameFile(link, target)) continue; // hard link fallback, still intact
     if (st) {
       // A real file/dir already exists (e.g. created by claude before linking): merge it into shared.

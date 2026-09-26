@@ -74,8 +74,10 @@ export function readRateLimitEvent(info) {
   for (const [name, w] of Object.entries(info.unifiedWindows || {})) {
     windows[name] = { utilization: w?.utilization ?? null, resetsAt: toMs(w?.resetsAt) };
   }
+  // With extra usage (overage) turned on, requests keep working after the plan limit.
+  const onOverage = info.isUsingOverage === true || info.overageStatus === 'allowed' || info.overageStatus === 'allowed_warning';
   return {
-    rejected: info.status === 'rejected',
+    rejected: info.status === 'rejected' && !onOverage,
     status: info.status || null,
     type: info.rateLimitType || null,
     resetsAt: toMs(info.resetsAt),

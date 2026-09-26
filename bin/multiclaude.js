@@ -10,6 +10,7 @@ import { readMemory, remember, forgetAll } from '../src/memory.js';
 import { paths } from '../src/paths.js';
 import { claudeSpawn } from '../src/claude-path.js';
 import { runApp } from '../src/app.js';
+import { runMcpServer } from '../src/mcp.js';
 
 const HELP = `MultiClaude — run Claude Code across many accounts with automatic failover.
 
@@ -117,6 +118,10 @@ async function main() {
       const dd = args.indexOf('--');
       const extra = dd === -1 ? [] : args.splice(dd).slice(1);
       await runTui(pool, { auto: Boolean(flag(args, '--auto')), sessionId: flag(args, '--resume') || null, extraArgs: extra });
+      break;
+    }
+    case 'mcp': {
+      runMcpServer();
       break;
     }
     case 'app': {

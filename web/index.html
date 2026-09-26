@@ -50,6 +50,17 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line2); flex: none; }
   .dot.busy { background: var(--accent); animation: pulse 1.2s infinite; }
   @keyframes pulse { 50% { opacity: .3; } }
+  .twist { display: flex; align-items: center; gap: 3px; color: var(--muted); padding: 0 2px; }
+  .twist svg { transition: transform .15s; }
+  .twist.open svg { transform: rotate(90deg); }
+  .count { font-size: 11px; background: var(--panel2); border-radius: 99px; padding: 0 6px; }
+  .count.busy { background: var(--accent); color: var(--accent-ink); }
+  .subs { margin: 0 0 4px 17px; border-left: 1px solid var(--line2); padding-left: 6px; }
+  .sub { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 7px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .sub:hover { background: var(--panel); color: var(--ink2); }
+  .sub.on { background: var(--panel2); color: var(--ink); }
+  .sub .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .dot.bad { background: var(--bad); }
   .foot { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .foot:hover { background: var(--panel); }
   .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--panel2); display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none; }
@@ -95,6 +106,7 @@
   .tool.err .st { background: var(--bad); }
   .tool .name { font-weight: 600; flex: none; }
   .tool .arg { font-family: var(--mono); font-size: 12.5px; color: var(--ink2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .tool .open-sub { padding: 1px 10px; font-size: 12px; flex: none; }
   .tool .chev { color: var(--muted); transition: transform .15s; flex: none; }
   .tool.open > .head .chev { transform: rotate(90deg); }
   .tool > .body { display: none; border-top: 1px solid var(--line); }
@@ -113,6 +125,28 @@
   .todos .done { color: var(--muted); text-decoration: line-through; }
   .todos .doing { color: var(--accent); font-weight: 500; }
 
+  .perm { border: 1px solid var(--accent); border-radius: 10px; margin: 10px 0; padding: 10px 12px; background: var(--panel); }
+  .perm.answered { border-color: var(--line); }
+  .perm .q { font-size: 14px; margin-bottom: 4px; word-break: break-word; }
+  .perm .q code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .perm .diff { margin: 6px 0; border-radius: 6px; max-height: 200px; }
+  .msg-user { flex-direction: column; align-items: flex-end; }
+  .msg-user .meta { margin-top: 3px; }
+  .working.idle { color: var(--muted); }
+  .working.idle svg { animation: none; }
+  .subbar { max-width: 760px; margin: 0 auto; width: 100%; padding: 6px 24px; display: flex; align-items: center; gap: 10px; }
+  .subbar .subtitle { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+  .subbar .subtitle b { font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #slashMenu { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); padding: 4px; z-index: 5; }
+  #slashMenu div { display: flex; gap: 12px; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  #slashMenu div.on, #slashMenu div:hover { background: var(--panel2); }
+  #slashMenu b { font-family: var(--mono); font-weight: 500; font-size: 13px; min-width: 80px; }
+  #slashMenu span { color: var(--muted); }
+  .composer-inner { position: relative; }
+  .conv { padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+  .conv:hover { background: var(--panel); }
+  .conv .t { font-size: 14.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .conv .meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .note { font-size: 12.5px; color: var(--muted); margin: 10px 0; display: flex; align-items: center; gap: 8px; }
   .note::before, .note::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
   .error { font-size: 13.5px; color: var(--bad); margin: 10px 0; }
@@ -194,6 +228,7 @@
     </div>
     <div class="nav">
       <button class="nav-btn" id="newBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New session</button>
+      <button class="nav-btn" id="resumeBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>Resume…</button>
       <button class="nav-btn" id="acctBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M1 21c0-4 4-6 8-6s8 2 8 6M17 4a4 4 0 0 1 0 8M23 21c0-3-2-5-5-6"/></svg>Accounts</button>
       <button class="nav-btn" id="memBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h12l4 4v12H4z"/><path d="M8 12h8M8 16h5"/></svg>Memory</button>
     </div>
@@ -215,19 +250,21 @@
       <button class="icon-btn" id="delBtn" title="Delete session" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
     </div>
     <div class="banner" id="banner" hidden></div>
+    <div class="subbar" id="subbar" hidden></div>
     <div id="scroll"><div class="col" id="chat"></div></div>
     <div class="composer-wrap">
       <div class="composer-inner">
+        <div id="slashMenu" hidden></div>
         <div class="status" id="status"></div>
         <form class="composer" id="composer">
           <textarea id="prompt" rows="1" placeholder="Ask Claude to build, fix or explain anything…"></textarea>
           <div class="bar">
             <div class="pick"><select id="permSel" title="Permission mode">
+              <option value="default">Ask before acting</option>
               <option value="acceptEdits">Accept edits</option>
               <option value="auto">Auto</option>
               <option value="plan">Plan mode</option>
               <option value="bypassPermissions">Bypass permissions</option>
-              <option value="default">Ask (denies tools that need approval)</option>
             </select></div>
             <div class="spacer"></div>
             <div class="pick"><select id="modelSel" title="Model">
@@ -297,6 +334,16 @@
         <textarea class="in" id="memText" style="margin-top:8px"></textarea>
         <div class="acts"><button class="btn primary" id="memSave">Save memory</button><span class="meta" id="memSaved"></span></div>
       </section>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="resumeModal">
+  <div class="card" style="width:min(680px,100%)">
+    <header><h3>Resume a conversation</h3><div class="spacer"></div><button class="icon-btn" data-close>✕</button></header>
+    <div class="content">
+      <input class="in" id="resumeSearch" placeholder="Search conversations from Claude Code and MultiClaude">
+      <div id="resumeList" style="margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -385,9 +432,11 @@ function markdown(src) {
 /* ---------- state ---------- */
 let state = null;
 let currentId = store.get('session', null);
+let currentSub = null; // subagent tool-use id when viewing a subagent's conversation
 let es = null;
 let busy = false;
 let waitTimer = null;
+let bgTasks = 0;
 const chat = $('#chat');
 const scroller = $('#scroll');
 
@@ -416,14 +465,25 @@ async function refresh() {
 }
 
 /* ---------- sidebar ---------- */
+const collapsedSubs = new Set(store.get('collapsedSubs', []));
 function renderSidebar() {
   const q = $('#search').value.toLowerCase();
   const list = state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q) || s.cwd.toLowerCase().includes(q));
-  $('#recents').innerHTML = list.map((s) => `
-    <div class="recent ${s.id === currentId ? 'on' : ''}" data-id="${esc(s.id)}" title="${esc(s.cwd)}">
+  $('#recents').innerHTML = list.map((s) => {
+    const subs = s.subagents || [];
+    const open = subs.length && !collapsedSubs.has(s.id);
+    const running = subs.filter((x) => x.status === 'running').length;
+    return `
+    <div class="recent ${s.id === currentId && !currentSub ? 'on' : ''}" data-id="${esc(s.id)}" title="${esc(s.cwd)}">
       <span class="dot ${s.busy ? 'busy' : ''}"></span><span class="t">${esc(s.title)}</span>
+      ${subs.length ? `<button class="twist ${open ? 'open' : ''}" data-twist="${esc(s.id)}" title="${subs.length} subagent conversation${subs.length === 1 ? '' : 's'}">${running ? `<span class="count busy">${running}</span>` : `<span class="count">${subs.length}</span>`}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 6l6 6-6 6"/></svg></button>` : ''}
       <button class="x" data-del="${esc(s.id)}" title="Delete">✕</button>
-    </div>`).join('') || '<div class="meta" style="padding:4px 12px">No sessions yet</div>';
+    </div>
+    ${open ? `<div class="subs">${subs.map((a) => `
+      <div class="sub ${s.id === currentId && currentSub === a.id ? 'on' : ''}" data-sid="${esc(s.id)}" data-sub="${esc(a.id)}" title="${esc(a.type)} · ${esc(a.status)}">
+        <span class="dot ${a.status === 'running' ? 'busy' : a.status === 'failed' ? 'bad' : ''}"></span><span class="t">${esc(a.description)}</span>
+      </div>`).join('')}</div>` : ''}`;
+  }).join('') || '<div class="meta" style="padding:4px 12px">No sessions yet</div>';
   const a = state.accounts.find((x) => x.active) || state.accounts[0];
   const ready = state.accounts.filter((x) => x.status === 'ready').length;
   $('#footAvatar').textContent = a ? a.name[0].toUpperCase() : '·';
@@ -432,7 +492,18 @@ function renderSidebar() {
 }
 $('#recents').addEventListener('click', async (e) => {
   const del = e.target.closest('[data-del]');
-  if (del) { e.stopPropagation(); if (confirm('Delete this session from MultiClaude? (The Claude transcript stays on disk.)')) { await api('DELETE', '/api/sessions/' + del.dataset.del); if (del.dataset.del === currentId) openSession(null); refresh(); } return; }
+  if (del) { e.stopPropagation(); if (confirm('Delete this session from MultiClaude? (The Claude transcript stays on disk and can be reopened with /resume.)')) { await api('DELETE', '/api/sessions/' + del.dataset.del); if (del.dataset.del === currentId) openSession(null); refresh(); } return; }
+  const twist = e.target.closest('[data-twist]');
+  if (twist) {
+    e.stopPropagation();
+    const id = twist.dataset.twist;
+    if (collapsedSubs.has(id)) collapsedSubs.delete(id); else collapsedSubs.add(id);
+    store.set('collapsedSubs', [...collapsedSubs]);
+    renderSidebar();
+    return;
+  }
+  const sub = e.target.closest('.sub');
+  if (sub) { openSession(sub.dataset.sid, sub.dataset.sub); $('#app').classList.remove('mobile-open'); return; }
   const row = e.target.closest('.recent'); if (row) openSession(row.dataset.id);
   $('#app').classList.remove('mobile-open');
 });
@@ -443,15 +514,31 @@ $('#toggleSide').addEventListener('click', () => {
 });
 if (store.get('collapsed', false)) $('#app').classList.add('collapsed');
 
+function currentSubagent() {
+  const s = state?.sessions.find((x) => x.id === currentId);
+  return s && currentSub ? (s.subagents || []).find((a) => a.id === currentSub) : null;
+}
 function renderTop() {
   const s = state?.sessions.find((x) => x.id === currentId);
+  const a = currentSubagent();
   $('#title').textContent = s ? s.title : 'New session';
   $('#cwdChip').hidden = !s; if (s) { $('#cwdChip').textContent = s.cwd; $('#cwdChip').title = s.cwd; }
-  $('#delBtn').hidden = !s;
+  $('#delBtn').hidden = !s || Boolean(currentSub);
+  const bar = $('#subbar');
+  bar.hidden = !currentSub;
+  if (currentSub) {
+    bar.innerHTML = `<button class="btn" id="subBack">← Main conversation</button>
+      <div class="subtitle"><b>${esc(a?.description || 'Subagent')}</b><span class="meta">${esc(a?.type || '')} · ${esc(a?.status || 'deleted')}</span></div>
+      ${a && a.status !== 'running' ? `<button class="btn" id="subSave" title="Save this subagent's report to long-term memory">Save to memory</button><button class="btn" id="subDel">Delete</button>` : ''}`;
+    $('#subBack').onclick = () => openSession(currentId);
+    if ($('#subSave')) $('#subSave').onclick = async () => { try { await api('POST', `/api/sessions/${currentId}/subagents/${currentSub}/remember`); $('#subSave').textContent = 'Saved ✓'; } catch (err) { alert(err.message); } };
+    if ($('#subDel')) $('#subDel').onclick = async () => { if (!confirm('Delete this subagent conversation? Claude will not be able to resume it.')) return; try { await api('DELETE', `/api/sessions/${currentId}/subagents/${currentSub}`); openSession(currentId); refresh(); } catch (err) { alert(err.message); } };
+  }
+  promptEl.placeholder = currentSub ? 'Message this subagent (sent through the main agent)…' : busy ? 'Send a message while Claude works… (Esc to stop)' : 'Ask Claude to build, fix or explain anything… (/ for commands)';
   const perm = $('#permSel').value;
   $('#hint').textContent = perm === 'bypassPermissions' ? 'Bypass permissions: Claude can run any command without asking.'
-    : perm === 'default' ? 'Tools that need approval are denied in the web app. Pick Accept edits, Auto or Bypass to let Claude act.'
-    : perm === 'acceptEdits' ? 'Claude can edit files; shell commands that need approval are denied. Use Auto or Bypass for full terminal access.' : '';
+    : perm === 'plan' ? 'Plan mode: Claude plans and reads but does not change anything.'
+    : 'Claude asks before running commands or editing files outside its permissions.';
 }
 $('#title').addEventListener('click', async () => {
   if (!currentId) return;
@@ -466,25 +553,41 @@ $('#delBtn').addEventListener('click', async () => {
 /* ---------- chat rendering ---------- */
 let textEl = null, textBuf = '', rafPending = false;
 const toolCards = new Map();
+const permCards = new Map();
 let workingEl = null;
 
 function emptyState() {
-  chat.innerHTML = `<div class="empty"><h2>What are we working on?</h2><p>${state?.accounts.length ? `Working in <code>${esc(state.defaultCwd)}</code>. Use <b>New session</b> to pick another folder.` : 'Add your accounts first: open <b>Accounts</b> in the sidebar.'}</p></div>`;
+  chat.innerHTML = `<div class="empty"><h2>What are we working on?</h2><p>${state?.accounts.length ? `Working in <code>${esc(state.defaultCwd)}</code>. Use <b>New session</b> to pick another folder, or type <code>/resume</code> to continue a Claude Code conversation.` : 'Add your accounts first: open <b>Accounts</b> in the sidebar.'}</p></div>`;
 }
 function append(el) { if (workingEl) chat.insertBefore(el, workingEl); else chat.appendChild(el); toBottom(); return el; }
+function renderWorking() {
+  const show = busy || bgTasks > 0;
+  if (show && !workingEl) {
+    workingEl = document.createElement('div'); workingEl.className = 'working';
+    workingEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 6l-4.2 5 6.2 1-6.2 1.8L20 18l-6.2-2.2L12 22l-1.8-6.2L4 18l4.2-4.2L2 12l6.2-1L4 6l6.2 2.2z"/></svg><span></span>';
+    chat.appendChild(workingEl); toBottom();
+  } else if (!show && workingEl) { workingEl.remove(); workingEl = null; }
+  if (workingEl) {
+    $('span', workingEl).textContent = busy
+      ? `Working…${bgTasks ? ` · ${bgTasks} background task${bgTasks === 1 ? '' : 's'}` : ''}${currentSub ? '' : ' (Esc to stop)'}`
+      : `${bgTasks} background task${bgTasks === 1 ? '' : 's'} running`;
+    workingEl.classList.toggle('idle', !busy);
+  }
+}
 function setWorking(on) {
   busy = on;
-  if (on && !workingEl) {
-    workingEl = document.createElement('div'); workingEl.className = 'working';
-    workingEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 6l-4.2 5 6.2 1-6.2 1.8L20 18l-6.2-2.2L12 22l-1.8-6.2L4 18l4.2-4.2L2 12l6.2-1L4 6l6.2 2.2z"/></svg><span>Working…</span>';
-    chat.appendChild(workingEl); toBottom();
-  } else if (!on && workingEl) { workingEl.remove(); workingEl = null; }
-  const b = $('#sendBtn');
-  b.classList.toggle('stop', on);
-  b.title = on ? 'Stop' : 'Send';
-  b.innerHTML = on ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'
-    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  renderWorking();
+  syncSendButton();
   if (!on) setStatus('');
+  renderTop();
+}
+function syncSendButton() {
+  const b = $('#sendBtn');
+  const stopMode = busy && !promptEl.value.trim() && !currentSub;
+  b.classList.toggle('stop', stopMode);
+  b.title = stopMode ? 'Stop (Esc)' : 'Send';
+  b.innerHTML = stopMode ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 }
 function setStatus(text) { $('#status').style.display = text ? 'block' : 'none'; $('#status').textContent = text; }
 
@@ -497,14 +600,15 @@ function addText(t, isBlock) {
 }
 function endText() { if (textEl) flushText(); textEl = null; }
 
-const short = (p) => { const s = String(p || ''); const parts = s.split('/'); return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : s; };
+const short = (p) => { const s = String(p || ''); const parts = s.split(/[\\/]/); return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : s; };
 function toolArg(name, i = {}) {
-  if (name === 'Bash') return i.command;
+  if (name === 'Bash' || name === 'PowerShell') return i.command;
   if (['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(name)) return short(i.file_path || i.notebook_path);
   if (name === 'Grep' || name === 'Glob') return i.pattern + (i.path ? `  in ${short(i.path)}` : '');
   if (name === 'WebFetch') return i.url;
   if (name === 'WebSearch') return i.query;
   if (name === 'Task' || name === 'Agent') return (i.subagent_type ? `${i.subagent_type}: ` : '') + (i.description || '');
+  if (name === 'SendMessage') return `→ ${i.to || ''}: ${i.message || ''}`;
   if (name === 'TodoWrite') return `${(i.todos || []).filter((t) => t.status === 'completed').length}/${(i.todos || []).length} done`;
   const first = Object.values(i).find((v) => typeof v === 'string');
   return first || '';
@@ -522,7 +626,7 @@ function toolBody(name, i = {}) {
     return `<ul class="todos">${(i.todos || []).map((t) => `<li class="${t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'doing' : ''}">${t.status === 'completed' ? '☑' : t.status === 'in_progress' ? '◐' : '☐'} ${esc(t.content)}</li>`).join('')}</ul>`;
   }
   if (name === 'Task' || name === 'Agent') return i.prompt ? `<pre class="out">${esc(i.prompt)}</pre>` : '';
-  if (name === 'Bash' && i.command && i.command.includes('\n')) return `<pre class="out">$ ${esc(i.command)}</pre>`;
+  if ((name === 'Bash' || name === 'PowerShell') && i.command && i.command.includes('\n')) return `<pre class="out">$ ${esc(i.command)}</pre>`;
   return '';
 }
 function addTool(ev) {
@@ -530,28 +634,70 @@ function addTool(ev) {
   const isAgent = ev.name === 'Task' || ev.name === 'Agent';
   const el = document.createElement('div');
   el.className = `tool running${isAgent ? ' agent' : ''}${ev.name === 'TodoWrite' ? ' open' : ''}`;
-  el.innerHTML = `<div class="head"><span class="st"></span><span class="name">${esc(isAgent ? 'Subagent' : ev.name)}</span><span class="arg">${esc(toolArg(ev.name, ev.input))}</span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg></div>
-    <div class="body">${toolBody(ev.name, ev.input)}</div>${isAgent ? '<div class="children"></div>' : ''}`;
-  $('.head', el).addEventListener('click', () => el.classList.toggle('open'));
-  const parent = ev.parentId && toolCards.get(ev.parentId);
-  if (parent && $('.children', parent)) { $('.children', parent).appendChild(el); toBottom(); }
-  else append(el);
+  el.innerHTML = `<div class="head"><span class="st"></span><span class="name">${esc(isAgent ? 'Subagent' : ev.name)}</span><span class="arg">${esc(toolArg(ev.name, ev.input))}</span>${isAgent && !currentSub ? `<button class="btn open-sub" data-open-sub="${esc(ev.id)}">Open</button>` : ''}<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg></div>
+    <div class="body">${toolBody(ev.name, ev.input)}</div>`;
+  $('.head', el).addEventListener('click', (e) => {
+    const openBtn = e.target.closest('[data-open-sub]');
+    if (openBtn) { e.stopPropagation(); openSession(currentId, openBtn.dataset.openSub); return; }
+    el.classList.toggle('open');
+  });
+  append(el);
   if (ev.id) toolCards.set(ev.id, el);
+  if (isAgent) syncAgentCard(ev.id);
+}
+function syncAgentCard(id) {
+  const el = toolCards.get(id);
+  const a = state?.sessions.find((x) => x.id === currentId)?.subagents?.find((x) => x.id === id);
+  if (!el || !a) return;
+  el.classList.toggle('running', a.status === 'running');
+  el.classList.toggle('ok', a.status === 'done');
+  el.classList.toggle('err', a.status === 'failed' || a.status === 'stopped');
 }
 function addResult(ev) {
   const el = toolCards.get(ev.toolUseId);
   if (!el) return;
+  if (el.classList.contains('agent')) {
+    // An async subagent reports "launched" first; its real report arrives later.
+    if (/agent launched/i.test(ev.content || '')) return;
+    el.classList.remove('running'); el.classList.add(ev.isError ? 'err' : 'ok');
+    if (ev.content) { const md = document.createElement('div'); md.className = 'md'; md.style.padding = '4px 12px'; md.innerHTML = markdown(ev.content); $('.body', el).appendChild(md); }
+    return;
+  }
   el.classList.remove('running');
   el.classList.add(ev.isError ? 'err' : 'ok');
-  if (el.classList.contains('agent')) {
-    // a subagent's final report reads best as markdown, below its tool list
-    if (ev.content) { const md = document.createElement('div'); md.className = 'md'; md.style.padding = '4px 12px'; md.innerHTML = markdown(ev.content); $('.body', el).appendChild(md); }
-    $('.children', el)?.querySelectorAll('.tool.running').forEach((c) => c.classList.remove('running'));
-  } else if (ev.content && !['Edit', 'MultiEdit', 'Write', 'TodoWrite'].includes($('.name', el).textContent) || ev.isError) {
+  if (ev.content && !['Edit', 'MultiEdit', 'Write', 'TodoWrite'].includes($('.name', el).textContent) || ev.isError) {
     const pre = document.createElement('pre'); pre.className = 'out'; pre.textContent = ev.content || '(no output)';
     $('.body', el).appendChild(pre);
   }
   if (ev.isError) el.classList.add('open');
+}
+function addPermission(ev) {
+  endText();
+  if (permCards.has(ev.requestId)) return;
+  const el = document.createElement('div');
+  el.className = 'perm';
+  const what = toolArg(ev.toolName, ev.input || {});
+  const always = (ev.suggestions || []).length;
+  el.innerHTML = `<div class="q">Claude wants to use <b>${esc(ev.displayName || ev.toolName)}</b>${what ? `: <code>${esc(String(what).slice(0, 200))}</code>` : ''}</div>
+    ${ev.description && ev.description !== what ? `<div class="meta">${esc(ev.description)}</div>` : ''}
+    ${toolBody(ev.toolName, ev.input || {})}
+    <div class="acts"><button class="btn primary" data-d="allow">Allow</button>${always ? '<button class="btn" data-d="always">Allow for this session</button>' : ''}<button class="btn" data-d="deny">Deny</button></div>`;
+  el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    el.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+    try { await api('POST', `/api/sessions/${currentId}/permissions/${ev.requestId}`, { decision: b.dataset.d }); }
+    catch (err) { errorLine(err.message); el.querySelectorAll('button').forEach((x) => { x.disabled = false; }); }
+  });
+  permCards.set(ev.requestId, el);
+  append(el);
+  toBottom(true);
+}
+function resolvePermission(ev) {
+  const el = permCards.get(ev.requestId);
+  if (!el) return;
+  const label = { allow: 'Allowed', always: 'Allowed for this session', deny: 'Denied', cancelled: 'Cancelled' }[ev.decision] || ev.decision;
+  $('.acts', el).innerHTML = `<span class="meta">${esc(label)}</span>`;
+  el.classList.add('answered');
 }
 function note(text) { endText(); const d = document.createElement('div'); d.className = 'note'; d.textContent = text; append(d); }
 function errorLine(text) { endText(); const d = document.createElement('div'); d.className = 'error'; d.textContent = text; append(d); }
@@ -561,18 +707,43 @@ function handle(ev) {
   switch (ev.type) {
     case 'user': {
       endText();
-      const d = document.createElement('div'); d.className = 'msg-user'; d.innerHTML = `<div>${esc(ev.text)}</div>`;
+      const d = document.createElement('div'); d.className = 'msg-user';
+      d.innerHTML = `<div>${esc(ev.text)}</div>${ev.midTurn ? '<span class="meta">sent while Claude was working</span>' : ''}`;
       append(d); toBottom(true); break;
     }
     case 'text': addText(ev.text, ev.block); break;
+    case 'text_end': endText(); break;
     case 'tool': addTool(ev); break;
     case 'tool_result': addResult(ev); break;
-    case 'busy': setWorking(ev.busy); break;
-    case 'ready': setWorking(ev.busy); break;
+    case 'permission': addPermission(ev); break;
+    case 'permission_done': resolvePermission(ev); break;
+    case 'compact': note(ev.trigger === 'manual' ? 'Conversation compacted' : 'Conversation compacted automatically to free up context'); break;
+    case 'tasks': bgTasks = ev.running || 0; renderWorking(); break;
+    case 'subagent':
+      if (!ev.replay) {
+        const s = state?.sessions.find((x) => x.id === currentId);
+        if (s) {
+          s.subagents = s.subagents || [];
+          const i = s.subagents.findIndex((x) => x.id === ev.subagent.id);
+          if (i >= 0) s.subagents[i] = ev.subagent; else s.subagents.push(ev.subagent);
+          renderSidebar(); syncAgentCard(ev.subagent.id);
+          if (currentSub === ev.subagent.id) { renderTop(); setWorking(ev.subagent.status === 'running'); }
+        }
+      }
+      break;
+    case 'subagent_deleted': if (!ev.replay) refresh(); break;
+    case 'busy': if (!currentSub) setWorking(ev.busy); break;
+    case 'ready':
+      if (currentSub) setWorking(Boolean(ev.busy));
+      else {
+        setWorking(ev.busy);
+        for (const a of ev.subagents || []) syncAgentCard(a.id);
+      }
+      break;
     case 'done':
       endText();
-      if (!ev.replay) { setWorking(false); refresh(); }
-      document.querySelectorAll('.tool.running').forEach((c) => c.classList.remove('running'));
+      if (!ev.replay && !currentSub) { refresh(); }
+      if (ev.aborted) note('Interrupted');
       if (ev.error) errorLine(ev.error);
       break;
     case 'waiting':
@@ -585,49 +756,166 @@ function handle(ev) {
     case 'retry': if (notify) note(`API busy, retrying in ${dur(ev.delayMs)}`); break;
     case 'notice': if (!ev.replay) refresh(); if (notify) errorLine(ev.message); break;
   }
-  if (ev.type !== 'waiting' && ev.type !== 'text' && waitTimer) { clearInterval(waitTimer); waitTimer = null; if (busy) setStatus(''); }
+  if (ev.type !== 'waiting' && ev.type !== 'text' && waitTimer) { clearInterval(waitTimer); waitTimer = null; setStatus(''); }
 }
 
-function openSession(id) {
+function openSession(id, sub = null) {
   es?.close(); es = null;
-  currentId = id; store.set('session', id);
-  chat.innerHTML = ''; textEl = null; toolCards.clear(); workingEl = null; setWorking(false);
+  currentId = id; currentSub = sub; store.set('session', id);
+  chat.innerHTML = ''; textEl = null; toolCards.clear(); permCards.clear(); workingEl = null; bgTasks = 0; setWorking(false);
   clearInterval(waitTimer); waitTimer = null; setStatus('');
   if (state) { renderSidebar(); renderTop(); }
   if (!id) { emptyState(); return; }
   stick = true;
-  es = new EventSource(`/api/sessions/${id}/events?token=${encodeURIComponent(token)}`);
-  es.onmessage = (e) => handle(JSON.parse(e.data));
-  es.onerror = () => { if (es?.readyState === EventSource.CLOSED) setTimeout(() => currentId === id && openSession(id), 2000); };
+  const url = sub ? `/api/sessions/${id}/subagents/${encodeURIComponent(sub)}/events` : `/api/sessions/${id}/events`;
+  const mine = new EventSource(`${url}?token=${encodeURIComponent(token)}`);
+  es = mine;
+  mine.onmessage = (e) => { if (es === mine) handle(JSON.parse(e.data)); };
+  mine.onerror = () => { if (es === mine && mine.readyState === EventSource.CLOSED) setTimeout(() => es === mine && openSession(id, sub), 2000); };
 }
 
 /* ---------- composer ---------- */
 const promptEl = $('#prompt');
-for (const [id, key, def] of [['#permSel', 'perm', 'acceptEdits'], ['#modelSel', 'model', ''], ['#effortSel', 'effort', '']]) {
+for (const [id, key, def] of [['#permSel', 'perm', 'default'], ['#modelSel', 'model', ''], ['#effortSel', 'effort', '']]) {
   $(id).value = store.get(key, def);
   if ($(id).selectedIndex < 0) $(id).value = def;
   $(id).addEventListener('change', () => { store.set(key, $(id).value); renderTop(); });
 }
 function grow() { promptEl.style.height = 'auto'; promptEl.style.height = Math.min(240, promptEl.scrollHeight) + 'px'; }
-promptEl.addEventListener('input', grow);
+promptEl.addEventListener('input', () => { grow(); syncSendButton(); renderSlashMenu(); });
 promptEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!busy) $('#composer').requestSubmit(); }
-  if (e.key === 'Escape' && busy) stop();
+  if (slashMenuKey(e)) return;
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); }
+  if (e.key === 'Escape' && busy && !currentSub) { e.preventDefault(); stop(); }
 });
-async function stop() { if (currentId) await api('POST', `/api/sessions/${currentId}/stop`).catch(() => {}); }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && busy && !currentSub && document.activeElement !== promptEl && !document.querySelector('.modal.on')) stop();
+});
+async function stop() {
+  if (!currentId) return;
+  setStatus('Stopping…');
+  await api('POST', `/api/sessions/${currentId}/stop`).catch(() => {});
+}
+
+/* slash commands */
+const SLASH = [
+  ['/resume', 'Continue a previous Claude Code conversation'],
+  ['/compact', 'Summarise the conversation to free up context'],
+  ['/clear', 'Start a new session in the same folder'],
+  ['/model', 'Switch model: /model opus'],
+  ['/effort', 'Set effort: /effort high'],
+  ['/stop', 'Stop what Claude is doing'],
+  ['/memory', 'Open long-term memory'],
+];
+let slashIndex = 0;
+function slashMatches() {
+  const v = promptEl.value;
+  if (!v.startsWith('/') || v.includes('\n') || v.includes(' ')) return [];
+  return SLASH.filter(([c]) => c.startsWith(v.toLowerCase()));
+}
+function renderSlashMenu() {
+  const m = slashMatches();
+  const menu = $('#slashMenu');
+  menu.hidden = !m.length;
+  if (!m.length) return;
+  slashIndex = Math.min(slashIndex, m.length - 1);
+  menu.innerHTML = m.map(([c, d], i) => `<div class="${i === slashIndex ? 'on' : ''}" data-cmd="${c}"><b>${c}</b><span>${esc(d)}</span></div>`).join('');
+}
+function slashMenuKey(e) {
+  const m = slashMatches();
+  if (!m.length) return false;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); slashIndex = (slashIndex + (e.key === 'ArrowDown' ? 1 : m.length - 1)) % m.length; renderSlashMenu(); return true; }
+  if (e.key === 'Tab' || (e.key === 'Enter' && m[slashIndex][0] !== promptEl.value.trim())) {
+    e.preventDefault(); promptEl.value = m[slashIndex][0] + (['/model', '/effort'].includes(m[slashIndex][0]) ? ' ' : ''); renderSlashMenu(); return true;
+  }
+  if (e.key === 'Escape') { e.preventDefault(); promptEl.value = ''; renderSlashMenu(); return true; }
+  return false;
+}
+$('#slashMenu').addEventListener('mousedown', (e) => {
+  const d = e.target.closest('[data-cmd]'); if (!d) return;
+  e.preventDefault(); promptEl.value = d.dataset.cmd; renderSlashMenu(); $('#composer').requestSubmit();
+});
+
+/** Handle commands MultiClaude implements itself; returns true if handled. */
+async function localCommand(text) {
+  const [cmd, ...rest] = text.split(/\s+/);
+  const arg = rest.join(' ').trim();
+  switch (cmd.toLowerCase()) {
+    case '/resume': openResume(arg); return true;
+    case '/clear': case '/new': {
+      const cur = state?.sessions.find((s) => s.id === currentId);
+      const s = await api('POST', '/api/sessions', { cwd: cur?.cwd || state.defaultCwd });
+      await refresh(); openSession(s.id); return true;
+    }
+    case '/model': {
+      const opt = [...$('#modelSel').options].find((o) => o.value === arg.toLowerCase() || o.textContent.toLowerCase() === arg.toLowerCase());
+      if (!opt && arg) { const o = new Option(arg, arg); $('#modelSel').add(o); }
+      $('#modelSel').value = opt ? opt.value : arg; store.set('model', $('#modelSel').value); note(`Model: ${$('#modelSel').selectedOptions[0]?.textContent || 'default'}`); return true;
+    }
+    case '/effort': {
+      if (![...$('#effortSel').options].some((o) => o.value === arg)) { errorLine('Effort: low, medium, high, xhigh or max'); return true; }
+      $('#effortSel').value = arg; store.set('effort', arg); note(`Effort: ${arg}`); return true;
+    }
+    case '/stop': stop(); return true;
+    case '/memory': openSettings('memory'); return true;
+    default: return false;
+  }
+}
+
 $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (busy) return stop();
   const text = promptEl.value.trim();
-  if (!text) return;
+  if (!text) { if (busy) stop(); return; }
   if (!state?.accounts.length) { openSettings('accounts'); return; }
+  $('#slashMenu').hidden = true;
   try {
+    if (text.startsWith('/') && await localCommand(text)) { promptEl.value = ''; grow(); syncSendButton(); return; }
+    let message = text;
+    if (currentSub) {
+      // Subagents are driven by the main agent, so relay the message through it.
+      const a = currentSubagent();
+      message = `Please send this message to the subagent "${a?.description || currentSub}"${a?.agentId ? ` (agentId ${a.agentId})` : ''} using SendMessage, and continue from its reply:\n\n${text}`;
+      openSession(currentId);
+    }
     if (!currentId) { const s = await api('POST', '/api/sessions', { cwd: state.defaultCwd }); openSession(s.id); }
-    promptEl.value = ''; grow();
-    await api('POST', `/api/sessions/${currentId}/messages`, { prompt: text, model: $('#modelSel').value, effort: $('#effortSel').value, permissionMode: $('#permSel').value });
+    promptEl.value = ''; grow(); syncSendButton();
+    await api('POST', `/api/sessions/${currentId}/messages`, { prompt: message, model: $('#modelSel').value, effort: $('#effortSel').value, permissionMode: $('#permSel').value });
     refresh();
   } catch (err) { errorLine(err.message); }
 });
+
+/* ---------- /resume ---------- */
+let conversations = [];
+async function openResume(query = '') {
+  $('#resumeModal').classList.add('on');
+  $('#resumeSearch').value = query;
+  $('#resumeList').innerHTML = '<div class="meta" style="padding:10px">Loading…</div>';
+  try { conversations = (await api('GET', '/api/conversations')).conversations; }
+  catch (err) { $('#resumeList').innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  renderResume();
+  $('#resumeSearch').focus();
+}
+const ago = (t) => { const s = (Date.now() - t) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
+function renderResume() {
+  const q = $('#resumeSearch').value.toLowerCase();
+  const list = conversations.filter((c) => !q || c.title.toLowerCase().includes(q) || c.firstPrompt.toLowerCase().includes(q) || (c.cwd || '').toLowerCase().includes(q));
+  $('#resumeList').innerHTML = list.map((c) => `
+    <div class="conv" data-conv="${esc(c.id)}">
+      <div class="t">${esc(c.title)}</div>
+      <div class="meta">${ago(c.updatedAt)} · ${c.messages} message${c.messages === 1 ? '' : 's'} · ${esc(c.cwd || 'unknown folder')}${c.sessionId ? ' · open in MultiClaude' : ''}</div>
+    </div>`).join('') || '<div class="meta" style="padding:10px">No conversations found.</div>';
+}
+$('#resumeSearch').addEventListener('input', renderResume);
+$('#resumeList').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-conv]'); if (!row) return;
+  const c = conversations.find((x) => x.id === row.dataset.conv);
+  try {
+    const s = c.sessionId ? { id: c.sessionId } : await api('POST', '/api/sessions/resume', { claudeSessionId: c.id, cwd: c.cwd, title: c.title });
+    $('#resumeModal').classList.remove('on');
+    await refresh(); openSession(s.id); promptEl.focus();
+  } catch (err) { alert(err.message); }
+});
+$('#resumeBtn').addEventListener('click', () => openResume());
 
 /* ---------- new session ---------- */
 async function browse(p) {

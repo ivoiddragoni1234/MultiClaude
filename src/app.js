@@ -8,6 +8,7 @@ import { AccountPool } from './accounts.js';
 import { startServer } from './server.js';
 import { paths } from './paths.js';
 import { openWindow, showError } from './desktop.js';
+import { VERSION } from './version.js';
 
 const PORT = 7878;
 const IDLE_EXIT_MS = 20000;
@@ -39,13 +40,29 @@ function appToken() {
   return t;
 }
 
-async function alreadyRunning(port, token) {
+/** The version of MultiClaude already running on this port, or null. */
+async function runningVersion(port, token) {
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { 'x-token': token }, signal: AbortSignal.timeout(1500) });
-    return r.ok;
+    if (!r.ok) return null;
+    return (await r.json()).version || '0.1.0';
   } catch {
-    return false;
+    return null;
   }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** A different version is running (e.g. you just replaced the exe): ask it to quit and wait. */
+async function replaceOldInstance(port, token) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/api/quit`, { method: 'POST', headers: { 'x-token': token }, signal: AbortSignal.timeout(2000) });
+  } catch { /* versions before 0.2.0 have no quit endpoint */ }
+  for (let i = 0; i < 20; i++) {
+    await sleep(500);
+    if (!(await runningVersion(port, token))) return true;
+  }
+  return false;
 }
 
 export async function runApp() {
@@ -53,17 +70,22 @@ export async function runApp() {
   const token = appToken();
   const profileDir = path.join(paths.home, 'window');
 
-  // Launched again while running: just open another window onto the running instance.
-  if (await alreadyRunning(PORT, token)) {
+  const running = await runningVersion(PORT, token);
+  if (running === VERSION) {
+    // Launched again while running: just open another window onto the running instance.
     openWindow(`http://127.0.0.1:${PORT}/#token=${token}`, profileDir);
     return;
+  }
+  if (running) {
+    console.log(`replacing running version ${running} with ${VERSION}`);
+    if (!(await replaceOldInstance(PORT, token))) console.log('old version did not quit; starting on another port');
   }
 
   const pool = new AccountPool();
   let started = null;
   for (const port of [PORT, PORT + 1, PORT + 2, PORT + 3, 0]) {
     try {
-      started = await startServer(pool, { port, token, cwd: os.homedir() });
+      started = await startServer(pool, { port, token, cwd: os.homedir(), onQuit: () => process.exit(0) });
       break;
     } catch (err) {
       if (err.code !== 'EADDRINUSE') throw err;
@@ -72,6 +94,7 @@ export async function runApp() {
   if (!started) throw new Error('Could not start the local server (ports 7878-7881 are busy).');
   console.log(`MultiClaude running at ${started.url.replace(/#.*/, '')} (log: ${logFile})`);
 
+  process.on('exit', () => started.sessions.closeAll());
   const mode = openWindow(started.url, profileDir);
   console.log(`opened UI in ${mode} mode`);
 

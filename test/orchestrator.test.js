@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'multiclaude-test-'));
 process.env.MULTICLAUDE_HOME = tmp;
+process.env.MULTICLAUDE_CLAUDE_HOME = path.join(tmp, 'claude-home');
 process.env.FAKE_LOG = path.join(tmp, 'calls.log');
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude.js');
 
@@ -50,7 +51,7 @@ test('account profiles share transcripts and memory', () => {
   const pool = freshPool(['a', 'b']);
   for (const a of pool.accounts) {
     const dir = paths.accountDir(a.id);
-    assert.equal(fs.realpathSync(path.join(dir, 'projects')), fs.realpathSync(path.join(paths.shared, 'projects')));
+    assert.equal(fs.realpathSync(path.join(dir, 'projects')), fs.realpathSync(paths.projects));
     assert.equal(fs.realpathSync(path.join(dir, 'CLAUDE.md')), fs.realpathSync(paths.memory));
   }
 });

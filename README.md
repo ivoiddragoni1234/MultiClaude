@@ -8,7 +8,10 @@ A personal Claude gateway, inspired by OpenClaw. You sign in as many accounts as
 - **Waits instead of failing.** When all accounts are limited, it counts down to the earliest reset and continues. Set `onAllLimited` to `stop` if you would rather it stopped.
 - **Switches before hitting the wall.** It reads Claude Code's rate-limit events and retires an account once a usage window is 97% full (`switchAtUtilization`).
 - **Persistent memory.** A shared `CLAUDE.md` loads into every session on every account. Claude is told it can append to this file, and you can manage it with `/remember`, `/memory` and `/forget` or edit it in the dashboard.
-- **Claude Code–style web app.** `multiclaude web` opens a local site laid out like Claude Code: a sessions sidebar, streaming chat, tool cards with diffs and output, subagents shown with their own nested tool calls, todo lists, and model, effort and permission pickers. Accounts switch silently in the middle of a turn, with no restart and no pop-up. Past sessions reload from Claude Code's own transcripts.
+- **Claude Code–style web app.** `multiclaude web` (or the Windows app) opens a local site laid out like Claude Code: a sessions sidebar, streaming chat, tool cards with diffs and output, todo lists, permission prompts, and model, effort and permission pickers. Accounts switch silently in the middle of a turn, with no restart and no pop-up.
+- **Talk while it works.** Each conversation is one long-running Claude Code process, so messages you send while Claude is busy are absorbed into the running turn, exactly like the Claude Code app. **Stop** (or Esc) interrupts the turn and keeps the conversation.
+- **Subagents in the sidebar.** Subagent conversations appear nested under their chat instead of flooding it. The main agent can resume them, and once they're finished it can save what matters to memory and delete them. You can do the same with the buttons in a subagent's view.
+- **Shared history with Claude Code.** Conversations live in the same folder as plain Claude Code (`~/.claude/projects`). Type `/resume` to pick up any Claude Code conversation in MultiClaude, and `claude --resume` in a terminal sees MultiClaude's conversations too.
 - Zero dependencies. You only need Node 18+ and Claude Code.
 
 ## Windows app (no terminal needed)
@@ -63,13 +66,21 @@ Chat commands: `/accounts`, `/use <name>`, `/strategy <s>`, `/reset <name>`, `/n
 
 ## The web app
 
-Run `multiclaude web` and open the link it prints. The link includes a private access token.
+Run `multiclaude web` and open the link it prints; the link includes a private access token. The Windows app does this for you.
 
 - **New session** picks a working folder. Each session is a real Claude Code conversation, and several can run at once.
-- Account switching is silent. If an account runs out mid-task, the next one resumes the same conversation and finishes the work. The chat just keeps streaming. Turn on *Rotation → Show account switches in the chat* if you want to see it happen. The only time you'll see a message is when every account is used up; then a bar counts down to the next reset and it continues on its own.
+- **Send messages any time.** While Claude is working, Enter sends your message into the running turn. Press **Esc** or the stop button to interrupt. If Claude doesn't stop within a few seconds, pressing Stop again ends Claude and everything it started, and the conversation stays resumable.
+- **Permissions.** In *Ask before acting* mode, Claude shows Allow / Allow for this session / Deny cards, just like Claude Code. *Accept edits*, *Auto*, *Plan mode* and *Bypass permissions* work as they do in Claude Code.
+- **Subagents** show up under their chat in the sidebar with a status dot. Open one to see its whole conversation. Messages you type there are passed to the subagent through the main agent. **Save to memory** stores its report in long-term memory; **Delete** removes it. Claude has the same abilities through the `mcp__multiclaude__*` tools and is told to tidy up finished subagents.
+- **Slash commands.** Type `/` for the menu: `/resume`, `/compact`, `/clear`, `/model`, `/effort`, `/stop`, `/memory`. Anything else, such as your own commands and skills, goes straight to Claude Code.
+- **Auto-compact.** Claude Code compacts long conversations automatically; the chat shows a note when it happens. `/compact` does it on demand.
+- Account switching is silent. If an account runs out mid-task, the next one resumes the same conversation and finishes the work. Turn on *Rotation → Show account switches in the chat* if you want to see it happen. When every account is used up, a bar counts down to the next reset and it continues on its own.
 - **Accounts** (sidebar, or click your name at the bottom) lets you add Pro/Max tokens or API keys, see usage per window, pause accounts or clear a limit.
 - **Memory** edits the shared `CLAUDE.md` that every session loads.
-- The picker at the bottom left is the permission mode. The web app can't show approval prompts, so pick **Auto** or **Bypass permissions** if you want Claude to run shell commands freely. **Accept edits** allows file edits only.
+
+## Updating
+
+Replace `MultiClaude.exe` with the new version and open it. Your accounts, conversations, memory and settings are stored in `%USERPROFILE%\.multiclaude` (and conversations in `%USERPROFILE%\.claude\projects`), not inside the exe, so nothing is lost. If the old version is still running, the new one closes it first.
 
 ## Settings
 

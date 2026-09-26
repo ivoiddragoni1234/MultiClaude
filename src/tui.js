@@ -11,7 +11,7 @@ import { waitUntil } from './orchestrator.js';
 import { claudeSpawn } from './claude-path.js';
 
 function newestTranscript(since) {
-  const root = path.join(paths.shared, 'projects');
+  const root = paths.projects;
   let best = null;
   for (const dir of fs.existsSync(root) ? fs.readdirSync(root) : []) {
     const full = path.join(root, dir);

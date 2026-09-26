@@ -13,6 +13,9 @@ import { paths } from './paths.js';
 import { indexHtml } from './web-asset.js';
 import { resolveClaude, INSTALL_HINT } from './claude-path.js';
 import { openTerminal } from './desktop.js';
+import { listConversations } from './transcript.js';
+import { remember } from './memory.js';
+import { VERSION } from './version.js';
 const EDITABLE_SETTINGS = [
   'strategy', 'onAllLimited', 'switchAtUtilization', 'defaultCooldownMinutes',
   'model', 'effort', 'permissionMode', 'notifySwitches',
@@ -38,7 +41,7 @@ function listDirs(dir) {
   return { path: target, parent: path.dirname(target), dirs: entries, sep: path.sep };
 }
 
-export function startServer(pool, { port = 7878, host = '127.0.0.1', token = crypto.randomBytes(18).toString('base64url'), cwd } = {}) {
+export function startServer(pool, { port = 7878, host = '127.0.0.1', token = crypto.randomBytes(18).toString('base64url'), cwd, onQuit } = {}) {
   const sessions = new SessionManager(pool, { defaultCwd: cwd || process.cwd() });
   const globalClients = new Set();
   const ping = () => { for (const res of globalClients) res.write('data: {"type":"changed"}\n\n'); };
@@ -48,6 +51,7 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
     pool.load();
     const claude = resolveClaude(pool.settings.claudePath);
     return {
+      version: VERSION,
       claude: { found: claude.found, path: claude.path, installHint: INSTALL_HINT },
       platform: process.platform,
       accounts: pool.describe(),
@@ -99,6 +103,30 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
 
       // sessions
       if (m === 'POST' && pathname === '/api/sessions') return send(201, sessions.create(await body(req)));
+      if (m === 'POST' && pathname === '/api/sessions/resume') return send(200, sessions.resume(await body(req)));
+      if (m === 'GET' && pathname === '/api/conversations') {
+        const open = new Map(sessions.meta.filter((x) => x.claudeSessionId).map((x) => [x.claudeSessionId, x.id]));
+        return send(200, { conversations: listConversations().map((c) => ({ ...c, sessionId: open.get(c.id) || null })) });
+      }
+      if ((match = pathname.match(/^\/api\/sessions\/([\w-]+)\/subagents(?:\/([\w-]+)(?:\/(\w+))?)?$/))) {
+        const [, id, sub, action] = match;
+        if (m === 'GET' && !sub) return send(200, { subagents: sessions.subagents(id) });
+        if (m === 'GET' && action === 'events') {
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+          const unsubscribe = sessions.subscribeSubagent(id, sub, res);
+          req.on('close', unsubscribe);
+          return;
+        }
+        if (m === 'DELETE' && sub && !action) return send(200, { deleted: sessions.deleteSubagent(id, sub) });
+        if (m === 'POST' && action === 'remember') return send(200, { saved: sessions.rememberSubagent(id, sub) });
+        return send(404, { error: 'Not found' });
+      }
+      if ((match = pathname.match(/^\/api\/sessions\/([\w-]+)\/permissions\/([\w-]+)$/)) && m === 'POST') {
+        const { decision } = await body(req);
+        if (!['allow', 'always', 'deny'].includes(decision)) return send(400, { error: 'decision must be allow, always or deny' });
+        sessions.answerPermission(match[1], match[2], decision);
+        return send(200, { ok: true });
+      }
       if ((match = pathname.match(/^\/api\/sessions\/([\w-]+)(?:\/(\w+))?$/))) {
         const [, id, action] = match;
         if (m === 'GET' && action === 'events') {
@@ -169,6 +197,12 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
         ping();
         return send(200, snapshot());
       }
+      if (m === 'POST' && pathname === '/api/memory/append') return send(200, { saved: remember(String((await body(req)).note || '')) });
+      if (m === 'POST' && pathname === '/api/quit') {
+        send(200, { ok: true });
+        setTimeout(() => { sessions.closeAll(); (onQuit || (() => process.exit(0)))(); }, 200);
+        return;
+      }
       if (m === 'GET' && pathname === '/api/memory') return send(200, { text: readMemory(), path: paths.memory });
       if (m === 'POST' && pathname === '/api/memory') { writeMemory(String((await body(req)).text ?? '')); return send(200, { ok: true }); }
       return send(404, { error: 'Not found' });
@@ -183,13 +217,16 @@ export function startServer(pool, { port = 7878, host = '127.0.0.1', token = cry
 
   return new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(port, host, () => resolve({
-      server,
-      url: `http://${host}:${server.address().port}/#token=${token}`,
-      token,
-      sessions,
-      // how many UI windows are connected, and whether Claude is mid-task (used to exit when idle)
-      activity: () => ({ windows: globalClients.size, busy: sessions.list().some((x) => x.busy) }),
-    }));
+    server.listen(port, host, () => {
+      sessions.bridge = { url: `http://${host}:${server.address().port}`, token };
+      resolve({
+        server,
+        url: `http://${host}:${server.address().port}/#token=${token}`,
+        token,
+        sessions,
+        // how many UI windows are connected, and whether Claude is mid-task (used to exit when idle)
+        activity: () => ({ windows: globalClients.size, busy: sessions.activity().busy }),
+      });
+    });
   });
 }
