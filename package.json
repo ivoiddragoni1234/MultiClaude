@@ -1,6 +1,6 @@
 {
   "name": "multiclaude",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run Claude Code across a pool of accounts (subscriptions or API keys) with automatic failover, waiting, shared sessions and persistent memory.",
   "type": "module",
   "bin": {
